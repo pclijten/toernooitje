@@ -746,4 +746,478 @@
       
       // Close button
       notification.querySelector(".close-btn").addEventListener("click", () => {
-        clearTimeout
+        clearTimeout(timeout);
+        closeNotification(notification);
+      });
+    }
+    
+    function closeNotification(notification) {
+      notification.classList.remove("show");
+      setTimeout(() => {
+        notification.remove();
+      }, 300);
+    }
+    
+    // Call initial setup functions
+    updateVeldenInstellingen();
+    updateSpelersInput();
+  </script>
+  <style>
+    :root {
+      --primary: #1e88e5;
+      --primary-dark: #1565c0;
+      --secondary: #f5f5f5;
+      --text: #333;
+      --success: #4caf50;
+      --warning: #ff9800;
+      --danger: #f44336;
+      --info: #2196f3;
+      --border: #e0e0e0;
+      --shadow: rgba(0, 0, 0, 0.1);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Open Sans', sans-serif;
+      padding: 1rem;
+      color: var(--text);
+      background-color: #f9f9f9;
+      line-height: 1.6;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1, h2, h3 {
+      margin-bottom: 1rem;
+      color: var(--primary-dark);
+    }
+    
+    h1 {
+      font-size: 1.8rem;
+      margin-top: 1rem;
+      text-align: center;
+    }
+    
+    h2 {
+      font-size: 1.4rem;
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 0.5rem;
+      margin-top: 1.5rem;
+    }
+    
+    h3 {
+      font-size: 1.2rem;
+      margin-top: 1rem;
+    }
+    
+    /* Logo */
+    .logo {
+      height: 40px;
+      margin-right: 15px;
+    }
+    
+    /* Team header */
+    .team-header {
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      background-color: var(--primary);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    
+    .team-header-content {
+      display: flex;
+      align-items: center;
+    }
+    
+    /* Formulieren */
+    .form-section {
+      background-color: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    
+    .text-input, .number-input, .select-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'Open Sans', sans-serif;
+      margin-bottom: 10px;
+    }
+    
+    .number-input {
+      width: 80px;
+    }
+    
+    /* Spelers grid */
+    .players-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    /* Buttons */
+    .btn {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-family: 'Open Sans', sans-serif;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:hover {
+      background-color: var(--primary-dark);
+    }
+    
+    .btn.success {
+      background-color: var(--success);
+    }
+    
+    .btn.warning {
+      background-color: var(--warning);
+    }
+    
+    .btn.danger {
+      background-color: var(--danger);
+    }
+    
+    .btn.info {
+      background-color: var(--info);
+    }
+    
+    .icon {
+      font-style: normal;
+    }
+    
+    /* Schema styling */
+    .schema-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    
+    .ronde-blok {
+      background-color: white;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    
+    .ronde-titel {
+      margin-top: 0;
+      margin-bottom: 15px;
+      text-align: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .wedstrijd-kaart {
+      background-color: var(--secondary);
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px var(--shadow);
+    }
+    
+    .wedstrijd-header {
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--primary-dark);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 5px;
+    }
+    
+    .teams-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .team {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 45%;
+    }
+    
+    .team-naam {
+      text-align: center;
+      margin: 5px 0;
+      font-weight: 600;
+    }
+    
+    .vs {
+      font-weight: 700;
+      color: #888;
+    }
+    
+    .score-input {
+      width: 50px;
+      text-align: center;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    
+    /* Stand tabel */
+    .stand-container {
+      background-color: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 30px;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    
+    .stand-titel {
+      text-align: center;
+      margin-top: 0;
+    }
+    
+    .stand-tabel {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    .stand-tabel th, .stand-tabel td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .stand-tabel th {
+      background-color: var(--secondary);
+      font-weight: 600;
+    }
+    
+    .stand-tabel tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    
+    .stand-tabel tr:hover {
+      background-color: #f1f1f1;
+    }
+    
+    /* Acties container */
+    .actions-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    /* Spinner */
+    .spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+      margin-left: 10px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Notificaties */
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      max-width: 350px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: transform 0.3s, opacity 0.3s;
+      z-index: 1000;
+    }
+    
+    .notification.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    
+    .notification.success {
+      border-left: 4px solid var(--success);
+    }
+    
+    .notification.error {
+      border-left: 4px solid var(--danger);
+    }
+    
+    .notification.info {
+      border-left: 4px solid var(--info);
+    }
+    
+    .notification.warning {
+      border-left: 4px solid var(--warning);
+    }
+    
+    .notification-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+    }
+    
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #aaa;
+    }
+    
+    .close-btn:hover {
+      color: #777;
+    }
+    
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    .empty-message {
+      text-align: center;
+      color: #888;
+      font-style: italic;
+      padding: 20px;
+    }
+    
+    /* Responsief ontwerp */
+    @media (max-width: 768px) {
+      .schema-container {
+        grid-template-columns: 1fr;
+      }
+      
+      .wedstrijd-kaart {
+        padding: 10px;
+      }
+      
+      .team-naam {
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="teamSelect">
+    <div class="form-section">
+      <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+        <img src="logo.png" alt="ASV33 Logo" class="logo">
+        <h1>Toernooitje Planner</h1>
+      </div>
+      
+      <h2>Kies je team</h2>
+      <select id="teamKeuze" class="select-input">
+        <option value="">-- Kies een team --</option>
+        <option value="JO11">JO11</option>
+        <option value="JO12">JO12</option>
+        <option value="JO13">JO13</option>
+        <option value="JO14">JO14</option>
+      </select>
+      <br>
+      <button id="teamSelectBtn" class="btn">Start <i class="icon">→</i></button>
+    </div>
+  </div>
+
+  <div id="configuratie" style="display:none">
+    <div id="teamHeader" class="team-header">
+      <div class="team-header-content">
+        <img src="logo.png" alt="ASV33 Logo" class="logo">
+        <h2 style="margin:0; color:white; border:none;">Team <span id="teamInfo"></span></h2>
+      </div>
+      <button id="teamSwitchBtn" class="btn">Team wijzigen</button>
+    </div>
+    
+    <div class="form-section">
+      <h2>Toernooi instellingen</h2>
+      
+      <div class="form-row">
+        <div>
+          <label for="toernooiId">Toernooi ID:</label>
+          <input type="text" id="toernooiId" class="text-input" placeholder="Datum_ID">
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div>
+          <label for="aantalSpelers">Aantal spelers:</label>
+          <input type="number" id="aantalSpelers" min="4" max="30" value="10" class="number-input">
+        </div>
+        
+        <div>
+          <label for="aantalRondes">Aantal rondes:</label>
+          <input type="number" id="aantalRondes" value="5" min="1" max="20" class="number-input">
+        </div>
+        
+        <div>
+          <label for="aantalVelden">Aantal velden:</label>
+          <input type="number" id="aantalVelden" value="2" min="1" max="10" class="number-input">
+        </div>
+      </div>
+      
+      <h3>Veld instellingen</h3>
+      <div id="veldenInstellingen"></div>
+      
+      <h3>Spelersnamen</h3>
+      <div id="naamvelden" class="players-container"></div>
+      
+      <button id="startBtn" class="btn success">Genereer schema <i class="icon">→</i></button>
+    </div>
+    
+    <div id="oudeToernooiSelectie" class="form-section"></div>
+    
+    <div id="app"></div>
+  </div>
+</body>
+</html>
