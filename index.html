@@ -30,10 +30,16 @@
     let team = null;
 
     document.getElementById("teamSelectBtn").addEventListener("click", () => {
-      team = document.getElementById("teamKeuze").value;
-      if (!team) return alert("Kies een team om door te gaan.");
-      document.getElementById("teamSelect").style.display = "none";
-      document.getElementById("configuratie").style.display = "block";
+  team = document.getElementById("teamKeuze").value;
+  if (!team) return alert("Kies een team om door te gaan.");
+  document.getElementById("teamSelect").style.display = "none";
+  document.getElementById("configuratie").style.display = "block";
+  const wisselBtn = document.createElement("button");
+  wisselBtn.textContent = `Team wijzigen (${team})`;
+  wisselBtn.style.float = "right";
+  wisselBtn.addEventListener("click", () => location.reload());
+  document.getElementById("configuratie").prepend(wisselBtn);
+});
     });
 
     document.getElementById("aantalVelden").addEventListener("change", () => {
@@ -204,16 +210,16 @@
     table { border-collapse: collapse; margin-top: 1rem; }
     th, td { padding: 6px 10px; }
     .logo {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      height: 40px;
-      z-index: 100;
-    }
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  height: 40px;
+  z-index: 100;
+}
   </style>
 </head>
 <body>
-  <img src="https://www.asv33.nl/wp-content/themes/asv/assets/images/asv33-logo.svg" alt="ASV33 Logo" class="logo">
+  <img src="logo.png" alt="ASV33 Logo" class="logo">
 
   <div id="teamSelect">
     <h2>Kies je team</h2>
