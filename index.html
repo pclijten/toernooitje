@@ -8,6 +8,8 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
     import { getFirestore, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+    import { getDocs, collection, collectionGroup } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyCRTFu3fH7EwPpUzO23P8dLPZ-DLadoFFA",
@@ -257,7 +259,16 @@ async function laadOudeToernooien() {
               const aVal = parseInt(document.getElementById(`${id}a`).value);
               const bVal = parseInt(document.getElementById(`${id}b`).value);
               if (!isNaN(aVal) && !isNaN(bVal)) {
-                const now = new Date().toISOString().split('T')[0]; const wedstrijd = schema[i][j]; setDoc(docRef, {   a: aVal,   b: bVal,   datum: now,   teamA: wedstrijd.teamA,   teamB: wedstrijd.teamB });
+                const now = new Date().toISOString().split('T')[0];
+const wedstrijd = schema[i][j];
+setDoc(docRef, {
+  a: aVal,
+  b: bVal,
+  datum: now,
+  teamA: wedstrijd.teamA,
+  teamB: wedstrijd.teamB
+});
+
               }
               updateStand();
             });
