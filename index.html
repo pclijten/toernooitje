@@ -22,7 +22,7 @@
     const db = getFirestore(app);
 
     const appDiv = document.getElementById("app");
-
+    const punten = {};
     let spelers = [];
     let schema = [];
     let veldInstellingen = [];
@@ -68,6 +68,7 @@
       for (let i = 0; i < aantalSpelers; i++) {
         const naam = document.getElementById(`speler_${i}`).value.trim();
         spelers.push(naam || `Speler ${i + 1}`);
+        punten[spelers[i]] = 0;
       }
 
       schema = genereerSchema(spelers, aantalRondes, veldInstellingen);
@@ -110,9 +111,38 @@
         });
         appDiv.appendChild(div);
       });
+      appDiv.innerHTML += "<h2>Stand</h2><table border='1' id='standTabel'><tr><th>Speler</th><th>Punten</th></tr></table>";
       document.getElementById("resetScores").addEventListener("click", resetScores);
       document.getElementById("resetAll").addEventListener("click", () => location.reload());
       setupFirebaseSync();
+    }
+
+    function updateStand() {
+      spelers.forEach(sp => punten[sp] = 0);
+      schema.forEach((ronde, i) => {
+        ronde.forEach((wedstrijd, j) => {
+          const id = `r${i}_v${j}`;
+          const elA = document.getElementById(`${id}a`);
+          const elB = document.getElementById(`${id}b`);
+          const a = parseInt(elA?.value);
+          const b = parseInt(elB?.value);
+          if (!isNaN(a) && !isNaN(b)) {
+            let pa = 0, pb = 0;
+            if (a > b) pa = 3;
+            else if (a < b) pb = 3;
+            else pa = pb = 1;
+            wedstrijd.teamA.forEach(sp => punten[sp] += pa);
+            wedstrijd.teamB.forEach(sp => punten[sp] += pb);
+          }
+        });
+      });
+      const table = document.getElementById("standTabel");
+      table.innerHTML = "<tr><th>Speler</th><th>Punten</th></tr>";
+      Object.entries(punten)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([naam, score]) => {
+          table.innerHTML += `<tr><td>${naam}</td><td>${score}</td></tr>`;
+        });
     }
 
     function setupFirebaseSync() {
@@ -126,6 +156,7 @@
               const data = snap.data();
               document.getElementById(`${id}a`).value = data.a;
               document.getElementById(`${id}b`).value = data.b;
+              updateStand();
             }
           });
 
@@ -136,6 +167,7 @@
               if (!isNaN(aVal) && !isNaN(bVal)) {
                 setDoc(docRef, { a: aVal, b: bVal });
               }
+              updateStand();
             });
           });
         });
@@ -152,6 +184,7 @@
           document.getElementById(`${id}b`).value = "";
         }
       }
+      updateStand();
     }
   </script>
   <style>
@@ -159,6 +192,8 @@
     .instellingen input { margin: 4px 0; }
     .blok { margin-top: 2rem; }
     .veld { margin: 1rem 0; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 6px 10px; }
   </style>
 </head>
 <body>
