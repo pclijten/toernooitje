@@ -4,6 +4,7 @@
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "description": "Plan rondes, vul scores in en houd standen bij voor elk speelveld en spelvorm.",
   "icons": []
 }

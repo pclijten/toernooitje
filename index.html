@@ -4,7 +4,162 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Toernooitje Planner</title>
-  <!-- script + css + body inhoud worden hier ingeladen in volledige versie -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCRTFu3fH7EwPpUzO23P8dLPZ-DLadoFFA",
+      authDomain: "toernooitje.firebaseapp.com",
+      projectId: "toernooitje",
+      storageBucket: "toernooitje.firebasestorage.app",
+      messagingSenderId: "491214474157",
+      appId: "1:491214474157:web:3fe8a6df93a40695dc6f24",
+      measurementId: "G-SF3G5J6NJ9"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const appDiv = document.getElementById("app");
+
+    let spelers = [];
+    let schema = [];
+    let veldInstellingen = [];
+
+    document.getElementById("aantalVelden").addEventListener("change", () => {
+      const n = parseInt(document.getElementById("aantalVelden").value);
+      const veldDiv = document.getElementById("veldenInstellingen");
+      veldDiv.innerHTML = "";
+      for (let i = 0; i < n; i++) {
+        veldDiv.innerHTML += `
+          <label>Veld ${i + 1} (teamgrootte):
+            <input type="number" id="veld_${i}" value="2" min="1" max="5">
+          </label><br>`;
+      }
+    });
+
+    document.getElementById("aantalSpelers").addEventListener("change", () => {
+      const n = parseInt(document.getElementById("aantalSpelers").value);
+      const naamvelden = document.getElementById("naamvelden");
+      naamvelden.innerHTML = "";
+      for (let i = 0; i < n; i++) {
+        naamvelden.innerHTML += `<input type="text" id="speler_${i}" placeholder="Naam speler ${i + 1}"/><br>`;
+      }
+    });
+
+    document.getElementById("startBtn").addEventListener("click", () => {
+      const aantalSpelers = parseInt(document.getElementById("aantalSpelers").value);
+      const aantalRondes = parseInt(document.getElementById("aantalRondes").value);
+      const aantalVelden = parseInt(document.getElementById("aantalVelden").value);
+
+      veldInstellingen = [];
+      for (let i = 0; i < aantalVelden; i++) {
+        veldInstellingen.push(parseInt(document.getElementById(`veld_${i}`).value));
+      }
+
+      const benodigdeSpelersPerRonde = veldInstellingen.reduce((acc, val) => acc + val * 2, 0);
+      if (benodigdeSpelersPerRonde > aantalSpelers) {
+        alert(`Je hebt ${aantalSpelers} spelers, maar er zijn ${benodigdeSpelersPerRonde} nodig per ronde.`);
+        return;
+      }
+
+      spelers = [];
+      for (let i = 0; i < aantalSpelers; i++) {
+        const naam = document.getElementById(`speler_${i}`).value.trim();
+        spelers.push(naam || `Speler ${i + 1}`);
+      }
+
+      schema = genereerSchema(spelers, aantalRondes, veldInstellingen);
+      renderSchema();
+    });
+
+    function genereerSchema(spelers, rondes, veldInstellingen) {
+      const schema = [];
+      for (let r = 0; r < rondes; r++) {
+        const ronde = [];
+        const mix = [...spelers].sort(() => Math.random() - 0.5);
+        let index = 0;
+        for (let v = 0; v < veldInstellingen.length; v++) {
+          const teamSize = veldInstellingen[v] * 2;
+          if (index + teamSize <= mix.length) {
+            const match = mix.slice(index, index + teamSize);
+            ronde.push({ veld: v + 1, teamA: match.slice(0, veldInstellingen[v]), teamB: match.slice(veldInstellingen[v]) });
+            index += teamSize;
+          }
+        }
+        schema.push(ronde);
+      }
+      return schema;
+    }
+
+    function renderSchema() {
+      appDiv.innerHTML = '<button id="resetScores">Reset uitslagen</button> <button id="resetAll">Opnieuw beginnen</button>';
+      schema.forEach((ronde, i) => {
+        const div = document.createElement("div");
+        div.className = "blok";
+        div.innerHTML = `<h2>Ronde ${i + 1}</h2>`;
+        ronde.forEach((wedstrijd, j) => {
+          const id = `r${i}_v${j}`;
+          div.innerHTML += `
+            <div class="veld">
+              <strong>Veld ${wedstrijd.veld}</strong><br>
+              ${wedstrijd.teamA.join(" & ")} <input type="number" min="0" id="${id}a"> -
+              <input type="number" min="0" id="${id}b"> ${wedstrijd.teamB.join(" & ")}<br>
+            </div>`;
+        });
+        appDiv.appendChild(div);
+      });
+      document.getElementById("resetScores").addEventListener("click", resetScores);
+      document.getElementById("resetAll").addEventListener("click", () => location.reload());
+      setupFirebaseSync();
+    }
+
+    function setupFirebaseSync() {
+      schema.forEach((ronde, i) => {
+        ronde.forEach((wedstrijd, j) => {
+          const id = `r${i}_v${j}`;
+          const docRef = doc(db, "scores", id);
+
+          onSnapshot(docRef, (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              document.getElementById(`${id}a`).value = data.a;
+              document.getElementById(`${id}b`).value = data.b;
+            }
+          });
+
+          ["a", "b"].forEach(kant => {
+            document.getElementById(`${id}${kant}`).addEventListener("change", () => {
+              const aVal = parseInt(document.getElementById(`${id}a`).value);
+              const bVal = parseInt(document.getElementById(`${id}b`).value);
+              if (!isNaN(aVal) && !isNaN(bVal)) {
+                setDoc(docRef, { a: aVal, b: bVal });
+              }
+            });
+          });
+        });
+      });
+    }
+
+    async function resetScores() {
+      for (let i = 0; i < schema.length; i++) {
+        for (let j = 0; j < schema[i].length; j++) {
+          const id = `r${i}_v${j}`;
+          const docRef = doc(db, "scores", id);
+          await deleteDoc(docRef);
+          document.getElementById(`${id}a`).value = "";
+          document.getElementById(`${id}b`).value = "";
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    .instellingen input { margin: 4px 0; }
+    .blok { margin-top: 2rem; }
+    .veld { margin: 1rem 0; padding: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+  </style>
 </head>
 <body>
   <h1>Toernooitje Planner</h1>
