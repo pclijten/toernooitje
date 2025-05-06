@@ -104,11 +104,7 @@ async function laadOudeToernooien() {
     let spelers = [];
     let schema = [];
     let veldInstellingen = [];
-    if (!team) {
-  document.getElementById("teamSelect").style.display = "block";
-  document.getElementById("configuratie").style.display = "none";
-}
-
+    let team = null;
 
     document.getElementById("teamSelectBtn").addEventListener("click", async () => {
   team = document.getElementById("teamKeuze").value;
@@ -119,13 +115,7 @@ async function laadOudeToernooien() {
   const wisselBtn = document.createElement("button");
   wisselBtn.textContent = `Team wijzigen (${team})`;
   wisselBtn.style.float = "right";
-  wisselBtn.addEventListener("click", () => {
-  document.getElementById("configuratie").style.display = "none";
-  document.getElementById("teamSelect").style.display = "block";
-  document.getElementById("oudeToernooiSelectie").innerHTML = "";
-  team = null;
-});
-
+  wisselBtn.addEventListener("click", () => {   document.getElementById("configuratie").style.display = "none";   document.getElementById("teamSelect").style.display = "block";   document.getElementById("oudeToernooiSelectie").innerHTML = "";   team = null; });
   document.getElementById("configuratie").prepend(wisselBtn);
 });
 
@@ -267,26 +257,7 @@ async function laadOudeToernooien() {
               const aVal = parseInt(document.getElementById(`${id}a`).value);
               const bVal = parseInt(document.getElementById(`${id}b`).value);
               if (!isNaN(aVal) && !isNaN(bVal)) {
-               const now = new Date().toISOString().split('T')[0];
-const teamA = schema[i][j].teamA;
-const teamB = schema[i][j].teamB;
-setDoc(docRef, {
-  a: aVal,
-  b: bVal,
-  datum: now,
-  teamA,
-  teamB
-});
-
-const wedstrijd = schema[i][j];
-setDoc(docRef, {
-  a: aVal,
-  b: bVal,
-  datum: now,
-  teamA: wedstrijd.teamA,
-  teamB: wedstrijd.teamB
-});
-
+                const now = new Date().toISOString().split('T')[0]; const wedstrijd = schema[i][j]; setDoc(docRef, {   a: aVal,   b: bVal,   datum: now,   teamA: wedstrijd.teamA,   teamB: wedstrijd.teamB });
               }
               updateStand();
             });
@@ -325,7 +296,7 @@ setDoc(docRef, {
   </style>
 </head>
 <body>
-  <img src="https://www.asv33.nl/wp-content/themes/asv/assets/images/asv33-logo.svg" alt="ASV33 Logo" class="logo">
+  <img src="logo.png" alt="ASV33 Logo" class="logo">
 
   <div id="teamSelect">
     <h2>Kies je team</h2>
