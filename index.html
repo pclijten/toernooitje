@@ -7,9 +7,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-    import { getDocs, collection, collectionGroup } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-
+    import {
+      getFirestore, doc, setDoc, deleteDoc, onSnapshot,
+      getDocs, collection, collectionGroup
+    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCRTFu3fH7EwPpUzO23P8dLPZ-DLadoFFA",
@@ -24,83 +25,6 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-// Lijst oude toernooien ophalen
-async function laadOudeToernooien() {
-  const select = document.createElement("select");
-  select.id = "oudeToernooien";
-  select.innerHTML = '<option value="">-- Kies eerder toernooi --</option>';
-
-  const prefix = `scores_${team}`;
-  const snapshot = await getDocs(collectionGroup(db, prefix));
-  const keys = new Set();
-  snapshot.forEach(doc => {
-  const parts = doc.id.split("_");
-  const key = parts[0];
-  const datum = doc.data().datum || "onbekend";
-  keys.add(`${key}|${datum}`);
-});
-
-  keys.forEach(k => {
-  const [id, datum] = k.split('|');
-  const opt = document.createElement("option");
-  opt.value = id;
-  opt.textContent = `Toernooi ${id} (${datum})`;
-    select.appendChild(opt);
-  });
-
-  const container = document.getElementById("oudeToernooiSelectie");
-  container.innerHTML = "<h3>Vorige toernooien</h3>";
-  container.appendChild(select);
-  select.addEventListener("change", async e => {
-  const gekozenId = e.target.value;
-  if (!gekozenId) return;
-
-  schema = [];
-  spelers = new Set();
-
-  const prefix = `scores_${team}`;
-  const snapshot = await getDocs(collection(db, prefix));
-
-  snapshot.forEach(docSnap => {
-    const id = docSnap.id;
-    if (id.startsWith(gekozenId + "_")) {
-      const data = docSnap.data();
-      const [rondeStr, veldStr] = id.replace(`${gekozenId}_`, "").split("_v");
-      const ronde = parseInt(rondeStr);
-      const veld = parseInt(veldStr);
-
-      const teamA = data.teamA || [];
-      const teamB = data.teamB || [];
-      const a = data.a;
-      const b = data.b;
-
-      teamA.forEach(sp => spelers.add(sp));
-      teamB.forEach(sp => spelers.add(sp));
-
-      if (!schema[ronde]) schema[ronde] = [];
-      schema[ronde][veld] = { veld: veld + 1, teamA, teamB, score: { a, b } };
-    }
-  });
-
-  spelers = Array.from(spelers);
-  renderSchema();
-
-  schema.forEach((ronde, r) => {
-    ronde.forEach((wedstrijd, v) => {
-      if (wedstrijd && wedstrijd.score) {
-        const id = `r${r}_v${v}`;
-        const aEl = document.getElementById(`${id}a`);
-        const bEl = document.getElementById(`${id}b`);
-        if (aEl) aEl.value = wedstrijd.score.a;
-        if (bEl) bEl.value = wedstrijd.score.b;
-      }
-    });
-  });
-
-  updateStand();
-});
-}
-
     const appDiv = document.getElementById("app");
     const punten = {};
     let spelers = [];
@@ -108,20 +32,96 @@ async function laadOudeToernooien() {
     let veldInstellingen = [];
     let team = null;
 
-    document.getElementById("teamSelectBtn").addEventListener("click", async () => {
-  team = document.getElementById("teamKeuze").value;
-  if (!team) return alert("Kies een team om door te gaan.");
-  document.getElementById("teamSelect").style.display = "none";
-  document.getElementById("configuratie").style.display = "block";
-  await laadOudeToernooien();
-  const wisselBtn = document.createElement("button");
-  wisselBtn.textContent = `Team wijzigen (${team})`;
-  wisselBtn.style.float = "right";
-  wisselBtn.addEventListener("click", () => {   document.getElementById("configuratie").style.display = "none";   document.getElementById("teamSelect").style.display = "block";   document.getElementById("oudeToernooiSelectie").innerHTML = "";   team = null; });
-  document.getElementById("configuratie").prepend(wisselBtn);
-});
+    async function laadOudeToernooien() {
+      const select = document.createElement("select");
+      select.id = "oudeToernooien";
+      select.innerHTML = '<option value="">-- Kies eerder toernooi --</option>';
 
-    document.getElementById("aantalVelden").addEventListener("change", () => {
+      const prefix = `scores_${team}`;
+      const snapshot = await getDocs(collectionGroup(db, prefix));
+      const keys = new Set();
+      snapshot.forEach(doc => {
+        const parts = doc.id.split("_");
+        const key = parts[0];
+        const datum = doc.data().datum || "onbekend";
+        keys.add(`${key}|${datum}`);
+      });
+
+      keys.forEach(k => {
+        const [id, datum] = k.split('|');
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = `Toernooi ${id} (${datum})`;
+        select.appendChild(opt);
+      });
+
+      const container = document.getElementById("oudeToernooiSelectie");
+      container.innerHTML = "<h3>Vorige toernooien</h3>";
+      container.appendChild(select);
+
+      select.addEventListener("change", async e => {
+        const gekozenId = e.target.value;
+        if (!gekozenId) return;
+
+        schema = [];
+        spelers = new Set();
+        const snapshot = await getDocs(collection(db, prefix));
+
+        snapshot.forEach(docSnap => {
+          const id = docSnap.id;
+          if (id.startsWith(gekozenId + "_")) {
+            const data = docSnap.data();
+            const [rondeStr, veldStr] = id.replace(`${gekozenId}_`, "").split("_v");
+            const ronde = parseInt(rondeStr);
+            const veld = parseInt(veldStr);
+            const teamA = data.teamA || [];
+            const teamB = data.teamB || [];
+            const a = data.a;
+            const b = data.b;
+            teamA.forEach(sp => spelers.add(sp));
+            teamB.forEach(sp => spelers.add(sp));
+            if (!schema[ronde]) schema[ronde] = [];
+            schema[ronde][veld] = { veld: veld + 1, teamA, teamB, score: { a, b } };
+          }
+        });
+
+        spelers = Array.from(spelers);
+        renderSchema();
+
+        schema.forEach((ronde, r) => {
+          ronde.forEach((wedstrijd, v) => {
+            if (wedstrijd && wedstrijd.score) {
+              const id = `r${r}_v${v}`;
+              const aEl = document.getElementById(`${id}a`);
+              const bEl = document.getElementById(`${id}b`);
+              if (aEl) aEl.value = wedstrijd.score.a;
+              if (bEl) bEl.value = wedstrijd.score.b;
+            }
+          });
+        });
+
+        updateStand();
+      });
+    }
+
+    document.getElementById("teamSelectBtn").addEventListener("click", async () => {
+      team = document.getElementById("teamKeuze").value;
+      if (!team) return alert("Kies een team om door te gaan.");
+      document.getElementById("teamSelect").style.display = "none";
+      document.getElementById("configuratie").style.display = "block";
+      await laadOudeToernooien();
+      const wisselBtn = document.createElement("button");
+      wisselBtn.textContent = `Team wijzigen (${team})`;
+      wisselBtn.style.float = "right";
+      wisselBtn.addEventListener("click", () => {
+        document.getElementById("configuratie").style.display = "none";
+        document.getElementById("teamSelect").style.display = "block";
+        document.getElementById("oudeToernooiSelectie").innerHTML = "";
+        team = null;
+      });
+      document.getElementById("configuratie").prepend(wisselBtn);
+    });
+document.getElementById("aantalVelden").addEventListener("change", () => {
       const n = parseInt(document.getElementById("aantalVelden").value);
       const veldDiv = document.getElementById("veldenInstellingen");
       veldDiv.innerHTML = "";
@@ -179,7 +179,11 @@ async function laadOudeToernooien() {
           const teamSize = veldInstellingen[v] * 2;
           if (index + teamSize <= mix.length) {
             const match = mix.slice(index, index + teamSize);
-            ronde.push({ veld: v + 1, teamA: match.slice(0, veldInstellingen[v]), teamB: match.slice(veldInstellingen[v]) });
+            ronde.push({
+              veld: v + 1,
+              teamA: match.slice(0, veldInstellingen[v]),
+              teamB: match.slice(veldInstellingen[v])
+            });
             index += teamSize;
           }
         }
@@ -210,8 +214,7 @@ async function laadOudeToernooien() {
       document.getElementById("resetAll").addEventListener("click", () => location.reload());
       setupFirebaseSync();
     }
-
-    function updateStand() {
+function updateStand() {
       spelers.forEach(sp => punten[sp] = 0);
       schema.forEach((ronde, i) => {
         ronde.forEach((wedstrijd, j) => {
@@ -260,14 +263,14 @@ async function laadOudeToernooien() {
               const bVal = parseInt(document.getElementById(`${id}b`).value);
               if (!isNaN(aVal) && !isNaN(bVal)) {
                 const now = new Date().toISOString().split('T')[0];
-const wedstrijd = schema[i][j];
-setDoc(docRef, {
-  a: aVal,
-  b: bVal,
-  datum: now,
-  teamA: wedstrijd.teamA,
-  teamB: wedstrijd.teamB
-});
+                const wedstrijd = schema[i][j];
+                setDoc(docRef, {
+                  a: aVal,
+                  b: bVal,
+                  datum: now,
+                  teamA: wedstrijd.teamA,
+                  teamB: wedstrijd.teamB
+                });
               }
               updateStand();
             });
@@ -297,16 +300,16 @@ setDoc(docRef, {
     table { border-collapse: collapse; margin-top: 1rem; }
     th, td { padding: 6px 10px; }
     .logo {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  height: 40px;
-  z-index: 100;
-}
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      height: 40px;
+      z-index: 100;
+    }
   </style>
 </head>
 <body>
-  <img src="https://www.asv33.nl/wp-content/themes/asv/assets/images/asv33-logo.svg" alt="ASV33 Logo" class="logo">
+  <img src="logo.png" alt="ASV33 Logo" class="logo">
 
   <div id="teamSelect">
     <h2>Kies je team</h2>
