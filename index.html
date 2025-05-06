@@ -31,12 +31,18 @@ async function laadOudeToernooien() {
   const prefix = `scores_${team}`;
   const snapshot = await getDocs(collectionGroup(db, prefix));
   const keys = new Set();
-  snapshot.forEach(doc => keys.add(doc.id.split("_")[0]));
+  snapshot.forEach(doc => {
+  const parts = doc.id.split("_");
+  const key = parts[0];
+  const datum = doc.data().datum || "onbekend";
+  keys.add(`${key}|${datum}`);
+});
 
   keys.forEach(k => {
-    const opt = document.createElement("option");
-    opt.value = k;
-    opt.textContent = `Toernooi ${k}`;
+  const [id, datum] = k.split('|');
+  const opt = document.createElement("option");
+  opt.value = id;
+  opt.textContent = `Toernooi ${id} (${datum})`;
     select.appendChild(opt);
   });
 
@@ -251,7 +257,16 @@ async function laadOudeToernooien() {
               const aVal = parseInt(document.getElementById(`${id}a`).value);
               const bVal = parseInt(document.getElementById(`${id}b`).value);
               if (!isNaN(aVal) && !isNaN(bVal)) {
-                setDoc(docRef, { a: aVal, b: bVal });
+               const now = new Date().toISOString().split('T')[0];
+const wedstrijd = schema[i][j];
+setDoc(docRef, {
+  a: aVal,
+  b: bVal,
+  datum: now,
+  teamA: wedstrijd.teamA,
+  teamB: wedstrijd.teamB
+});
+
               }
               updateStand();
             });
