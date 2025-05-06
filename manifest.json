@@ -1,0 +1,9 @@
+{
+  "name": "Toernooitje Planner",
+  "short_name": "Toernooitje",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "Genereer automatisch toernooischema's en verwerk scores.",
+  "icons": []
+}
