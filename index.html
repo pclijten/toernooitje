@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Toernooitje Planner
-  <h2> Vul altijd alles in </h2></title>
+  <title>Toernooitje Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
     import { getFirestore, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
@@ -27,6 +27,14 @@
     let spelers = [];
     let schema = [];
     let veldInstellingen = [];
+    let team = null;
+
+    document.getElementById("teamSelectBtn").addEventListener("click", () => {
+      team = document.getElementById("teamKeuze").value;
+      if (!team) return alert("Kies een team om door te gaan.");
+      document.getElementById("teamSelect`).style.display = "none";
+      document.getElementById("configuratie").style.display = "block";
+    });
 
     document.getElementById("aantalVelden").addEventListener("change", () => {
       const n = parseInt(document.getElementById("aantalVelden").value);
@@ -150,7 +158,7 @@
       schema.forEach((ronde, i) => {
         ronde.forEach((wedstrijd, j) => {
           const id = `r${i}_v${j}`;
-          const docRef = doc(db, "scores", id);
+          const docRef = doc(db, `scores_${team}`, id);
 
           onSnapshot(docRef, (snap) => {
             if (snap.exists()) {
@@ -179,7 +187,7 @@
       for (let i = 0; i < schema.length; i++) {
         for (let j = 0; j < schema[i].length; j++) {
           const id = `r${i}_v${j}`;
-          const docRef = doc(db, "scores", id);
+          const docRef = doc(db, `scores_${team}`, id);
           await deleteDoc(docRef);
           document.getElementById(`${id}a`).value = "";
           document.getElementById(`${id}b`).value = "";
@@ -196,27 +204,41 @@
     table { border-collapse: collapse; margin-top: 1rem; }
     th, td { padding: 6px 10px; }
     .logo {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  height: 40px;
-  z-index: 100;
-}
-
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      height: 40px;
+      z-index: 100;
+    }
   </style>
 </head>
 <body>
-  <img src="https://www.asv33.nl/wp-content/themes/asv/assets/images/asv33-logo.svg" alt="Logo" class="logo" align="left">
-  <h1>Toernooitje Planner</h1>
-  <h2> vul alles in</h2>
-  <div class="instellingen">
-    <label>Aantal spelers: <input type="number" id="aantalSpelers" min="4" max="30" value="0"></label><br>
-    <div id="naamvelden"></div>
-    <label>Aantal rondes: <input type="number" id="aantalRondes" value="0"></label><br>
-    <label>Aantal velden: <input type="number" id="aantalVelden" value="0"></label><br>
-    <div id="veldenInstellingen"></div>
-    <button id="startBtn">Genereer schema</button>
+  <img src="logo.png" alt="ASV33 Logo" class="logo">
+
+  <div id="teamSelect">
+    <h2>Kies je team</h2>
+    <select id="teamKeuze">
+      <option value="">-- Kies een team --</option>
+      <option value="JO11">JO11</option>
+      <option value="JO12">JO12</option>
+      <option value="JO13">JO13</option>
+      <option value="JO14">JO14</option>
+    </select>
+    <br><br>
+    <button id="teamSelectBtn">Start</button>
   </div>
-  <div id="app"></div>
+
+  <div id="configuratie" style="display:none">
+    <h1>Toernooitje Planner</h1>
+    <div class="instellingen">
+      <label>Aantal spelers: <input type="number" id="aantalSpelers" min="4" max="30" value="10"></label><br>
+      <div id="naamvelden"></div>
+      <label>Aantal rondes: <input type="number" id="aantalRondes" value="5"></label><br>
+      <label>Aantal velden: <input type="number" id="aantalVelden" value="2"></label><br>
+      <div id="veldenInstellingen"></div>
+      <button id="startBtn">Genereer schema</button>
+    </div>
+    <div id="app"></div>
+  </div>
 </body>
 </html>
