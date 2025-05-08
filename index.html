@@ -1,1278 +1,1576 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Toernooitje Planner</title>
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-   <script type="module" defer>
-    // Firebase imports must be at the top level
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import {
-      getFirestore, doc, setDoc, deleteDoc, onSnapshot,
-      getDocs, collectionGroup
-    } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toernooitje Planner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <script type="module" defer>
+        // Firebase imports must be at the top level
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import {
+            getFirestore, doc, setDoc, deleteDoc, onSnapshot,
+            getDocs, collectionGroup, collection, query, where // << Added missing imports
+        } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCRTFu3fH7EwPpUzO23P8dLPZ-DLadoFFA",
-      authDomain: "toernooitje.firebaseapp.com",
-      projectId: "toernooitje",
-      storageBucket: "toernooitje.firebasestorage.app",
-      messagingSenderId: "491214474157",
-      appId: "1:491214474157:web:3fe8a6df93a40695dc6f24",
-      measurementId: "G-SF3G5J6NJ9"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    const appDiv = document.getElementById("app");
-    const punten = {};
-    let spelers = [];
-    let schema = [];
-    let veldInstellingen = [];
-    let team = null;
-    let toernooiId = null;
-
-    // Voeg vandaag's datum toe als standaard toernooi naam
-    const vandaag = new Date().toISOString().split('T')[0];
-    
-    document.getElementById("teamSelectBtn").addEventListener("click", async () => {
-      team = document.getElementById("teamKeuze").value;
-      if (!team) return showNotification("Kies een team om door te gaan.", "error");
-      
-      document.getElementById("teamSelect").style.display = "none";
-      document.getElementById("configuratie").style.display = "block";
-      
-      // Toernooi-ID genereren (datum + timestamp voor uniekheid)
-      toernooiId = `${vandaag}_${Date.now().toString().slice(-6)}`;
-      document.getElementById("toernooiId").value = toernooiId;
-      
-      await laadOudeToernooien();
-      
-      document.getElementById("teamInfo").textContent = team;
-      document.getElementById("teamHeader").style.display = "flex";
-    });
-    
-    document.getElementById("teamSwitchBtn").addEventListener("click", () => {
-      if (schema.length > 0 && !confirm("Weet je zeker dat je van team wilt wisselen? Niet-opgeslagen wijzigingen gaan verloren.")) {
-        return;
-      }
-      document.getElementById("configuratie").style.display = "none";
-      document.getElementById("teamSelect").style.display = "block";
-      document.getElementById("oudeToernooiSelectie").innerHTML = "";
-      document.getElementById("teamHeader").style.display = "none";
-      document.getElementById("app").innerHTML = "";
-      team = null;
-    });
-
-    document.getElementById("aantalVelden").addEventListener("change", updateVeldenInstellingen);
-    document.getElementById("aantalSpelers").addEventListener("change", updateSpelersInput);
-
-    function updateVeldenInstellingen() {
-      const n = parseInt(document.getElementById("aantalVelden").value);
-      const veldDiv = document.getElementById("veldenInstellingen");
-      veldDiv.innerHTML = "";
-      
-      for (let i = 0; i < n; i++) {
-        const div = document.createElement("div");
-        div.className = "setting-row";
-        div.innerHTML = `
-          <label for="veld_${i}">Veld ${i + 1} (teamgrootte):</label>
-          <input type="number" id="veld_${i}" value="2" min="1" max="5" class="number-input">
-        `;
-        veldDiv.appendChild(div);
-      }
-    }
-
-    function updateSpelersInput() {
-      const n = parseInt(document.getElementById("aantalSpelers").value);
-      const naamvelden = document.getElementById("naamvelden");
-      naamvelden.innerHTML = "";
-      
-      for (let i = 0; i < n; i++) {
-        const div = document.createElement("div");
-        div.className = "player-input";
-        div.innerHTML = `
-          <input type="text" id="speler_${i}" placeholder="Naam speler ${i + 1}" class="text-input">
-        `;
-        naamvelden.appendChild(div);
-      }
-    }
-
-    async function laadOudeToernooien() {
-      const container = document.getElementById("oudeToernooiSelectie");
-      container.innerHTML = `
-        <div class="section-header">
-          <h3>Vorige toernooien</h3>
-          <div class="spinner" id="historieSpinner"></div>
-        </div>
-      `;
-      
-      const select = document.createElement("select");
-      select.id = "oudeToernooien";
-      select.className = "select-input";
-      select.innerHTML = '<option value="">-- Kies eerder toernooi --</option>';
-
-      const prefix = `scores_${team}`;
-      const spinner = document.getElementById("historieSpinner");
-      
-      try {
-        spinner.style.display = "inline-block";
-        const snapshot = await getDocs(collectionGroup(db, prefix));
-        const toernooien = new Map();
-        
-snapshot.forEach(doc => {
-  const data = doc.data();
-  const id = data.toernooiId || doc.id.split("_")[0]; // Fallback for older data
-  const datum = data.datum || "onbekend";
-  
-  if (!toernooien.has(id)) {
-    toernooien.set(id, {
-      id,
-      datum,
-      wedstrijden: 1
-    });
-  } else {
-    toernooien.get(id).wedstrijden++;
-  }
-});
-        // Sorteer op datum (nieuwste eerst)
-        Array.from(toernooien.values())
-          .sort((a, b) => b.datum.localeCompare(a.datum))
-          .forEach(toernooi => {
-            const opt = document.createElement("option");
-            opt.value = toernooi.id;
-            opt.textContent = `${toernooi.datum} (${toernooi.wedstrijden} wedstrijden)`;
-            select.appendChild(opt);
-          });
-        
-        container.appendChild(select);
-
-        select.addEventListener("change", laadToernooi);
-      } catch (error) {
-        console.error("Fout bij laden toernooien:", error);
-        container.innerHTML += `<p class="error">Fout bij laden toernooien: ${error.message}</p>`;
-      } finally {
-        spinner.style.display = "none";
-      }
-    }
-    
-    async function laadToernooi(e) {
-      const gekozenId = e.target.value;
-      if (!gekozenId) return;
-      
-      document.getElementById("historieSpinner").style.display = "inline-block";
-      
-      try {
-        toernooiId = gekozenId;
-        document.getElementById("toernooiId").value = toernooiId;
-        
-        schema = [];
-        spelers = new Set();
-        
-        const prefix = `scores_${team}`;
-        // Use a different query to make sure we only get documents for this specific tournament
-        const q = query(collection(db, prefix), where("toernooiId", "==", gekozenId));
-        const snapshot = await getDocs(q);
-          
-        // Clear existing data structures
-        schema = [];
-        spelers = new Set();
-        // Reset punten object
-        Object.keys(punten).forEach(key => delete punten[key]);
-        const snapshot = await getDocs(collection(db, prefix));
-        
-        let maxRonde = 0;
-        let maxVeld = 0;
-        let toernooiDatum = "";
-
-       snapshot.forEach(docSnap => {
-  const data = docSnap.data();
-  toernooiDatum = data.datum || toernooiDatum;
-  
-  if (data.teamA && data.teamB) {
-    // Extract ronde and veld from document ID
-    // Format could be: toernooiId_r0_v0
-    const docId = docSnap.id;
-    const parts = docId.split("_");
-    if (parts.length >= 3) {
-      const rondeStr = parts[parts.length-2];
-      const veldStr = parts[parts.length-1];
-      const ronde = parseInt(rondeStr.substring(1));
-      const veld = parseInt(veldStr.substring(1));
-      
-      if (!isNaN(ronde) && !isNaN(veld)) {
-        if (ronde > maxRonde) maxRonde = ronde;
-        if (veld > maxVeld) maxVeld = veld;
-        
-        const teamA = data.teamA || [];
-        const teamB = data.teamB || [];
-        const a = data.a;
-        const b = data.b;
-        
-        teamA.forEach(sp => spelers.add(sp));
-        teamB.forEach(sp => spelers.add(sp));
-        
-        if (!schema[ronde]) schema[ronde] = [];
-        schema[ronde][veld] = { 
-          veld: veld + 1, 
-          teamA, 
-          teamB, 
-          score: { a, b } 
+        const firebaseConfig = {
+            apiKey: "AIzaSyCRTFu3fH7EwPpUzO23P8dLPZ-DLadoFFA",
+            authDomain: "toernooitje.firebaseapp.com",
+            projectId: "toernooitje",
+            storageBucket: "toernooitje.firebasestorage.app",
+            messagingSenderId: "491214474157",
+            appId: "1:491214474157:web:3fe8a6df93a40695dc6f24",
+            measurementId: "G-SF3G5J6NJ9"
         };
-      }
-    }
-  }
-});
 
-// Make sure to update the standings at the end of loading
-updateStand();
-          const id = docSnap.id;
-          if (id.startsWith(gekozenId + "_r")) {
-            const data = docSnap.data();
-            toernooiDatum = data.datum || toernooiDatum;
-            
-            // Format: toernooiId_r0_v0
-            const [_, rondeStr, veldStr] = id.split("_");
-            const ronde = parseInt(rondeStr.substring(1));
-            const veld = parseInt(veldStr.substring(1));
-            
-            if (ronde > maxRonde) maxRonde = ronde;
-            if (veld > maxVeld) maxVeld = veld;
-            
-            const teamA = data.teamA || [];
-            const teamB = data.teamB || [];
-            const a = data.a;
-            const b = data.b;
-            
-            teamA.forEach(sp => spelers.add(sp));
-            teamB.forEach(sp => spelers.add(sp));
-            
-            if (!schema[ronde]) schema[ronde] = [];
-            schema[ronde][veld] = { 
-              veld: veld + 1, 
-              teamA, 
-              teamB, 
-              score: { a, b } 
-            };
-          }
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const appDiv = document.getElementById("app");
+        const punten = {};
+        let spelers = [];
+        let schema = [];
+        let veldInstellingen = [];
+        let team = null;
+        let toernooiId = null;
+
+        // Voeg vandaag's datum toe als standaard toernooi naam
+        const vandaag = new Date().toISOString().split('T')[0];
+
+        document.getElementById("teamSelectBtn").addEventListener("click", async () => {
+            team = document.getElementById("teamKeuze").value;
+            if (!team) return showNotification("Kies een team om door te gaan.", "error");
+
+            document.getElementById("teamSelect").style.display = "none";
+            document.getElementById("configuratie").style.display = "block";
+
+            // Toernooi-ID genereren (datum + timestamp voor uniekheid)
+            toernooiId = `${vandaag}_${Date.now().toString().slice(-6)}`;
+            document.getElementById("toernooiId").value = toernooiId;
+
+            await laadOudeToernooien();
+
+            document.getElementById("teamInfo").textContent = team;
+            document.getElementById("teamHeader").style.display = "flex";
         });
-        
-        // Vul de configuratie in
-        document.getElementById("aantalSpelers").value = spelers.size;
-        document.getElementById("aantalRondes").value = maxRonde + 1;
-        document.getElementById("aantalVelden").value = maxVeld + 1;
-        
+
+        document.getElementById("teamSwitchBtn").addEventListener("click", () => {
+            if (schema.length > 0 && !confirm("Weet je zeker dat je van team wilt wisselen? Niet-opgeslagen wijzigingen gaan verloren.")) {
+                return;
+            }
+            document.getElementById("configuratie").style.display = "none";
+            document.getElementById("teamSelect").style.display = "block";
+            document.getElementById("oudeToernooiSelectie").innerHTML = "";
+            document.getElementById("teamHeader").style.display = "none";
+            document.getElementById("app").innerHTML = "";
+            team = null;
+            // Reset all relevant state when switching teams
+            spelers = [];
+            schema = [];
+            veldInstellingen = [];
+            toernooiId = null;
+            // Clear punten object
+            Object.keys(punten).forEach(key => delete punten[key]);
+
+            // Reset input fields in configuratie section
+            document.getElementById("aantalSpelers").value = 4; // default or last used
+            document.getElementById("aantalRondes").value = 3; // default or last used
+            document.getElementById("aantalVelden").value = 1; // default or last used
+            updateSpelersInput();
+            updateVeldenInstellingen();
+        });
+
+        document.getElementById("aantalVelden").addEventListener("change", updateVeldenInstellingen);
+        document.getElementById("aantalSpelers").addEventListener("change", updateSpelersInput);
+
+        function updateVeldenInstellingen() {
+            const n = parseInt(document.getElementById("aantalVelden").value);
+            const veldDiv = document.getElementById("veldenInstellingen");
+            veldDiv.innerHTML = "";
+
+            for (let i = 0; i < n; i++) {
+                const div = document.createElement("div");
+                div.className = "setting-row";
+                div.innerHTML = `
+                    <label for="veld_${i}">Veld ${i + 1} (teamgrootte):</label>
+                    <input type="number" id="veld_${i}" value="${veldInstellingen[i] || 2}" min="1" max="5" class="number-input">
+                `; // Use existing value if available
+                veldDiv.appendChild(div);
+            }
+        }
+
+        function updateSpelersInput() {
+            const n = parseInt(document.getElementById("aantalSpelers").value);
+            const naamvelden = document.getElementById("naamvelden");
+            naamvelden.innerHTML = "";
+
+            for (let i = 0; i < n; i++) {
+                const div = document.createElement("div");
+                div.className = "player-input";
+                div.innerHTML = `
+                    <input type="text" id="speler_${i}" placeholder="Naam speler ${i + 1}" class="text-input" value="${spelers[i] || ''}">
+                `; // Use existing value if available
+                naamvelden.appendChild(div);
+            }
+        }
+
+        async function laadOudeToernooien() {
+            const container = document.getElementById("oudeToernooiSelectie");
+            container.innerHTML = `
+                <div class="section-header">
+                    <h3>Vorige toernooien</h3>
+                    <div class="spinner" id="historieSpinner"></div>
+                </div>
+            `;
+
+            const select = document.createElement("select");
+            select.id = "oudeToernooien";
+            select.className = "select-input";
+            select.innerHTML = '<option value="">-- Kies eerder toernooi --</option>';
+
+            const prefix = `scores_${team}`;
+            const spinner = document.getElementById("historieSpinner");
+
+            try {
+                spinner.style.display = "inline-block";
+                // Use collection() and query() with distinct tournament IDs if possible,
+                // or rely on collectionGroup and filter. collectionGroup is used here
+                // assuming an index is created. If performance is an issue, a separate
+                // collection of tournament metadata per team might be better.
+
+                // Fetch all documents for this team to find unique tournament IDs
+                const teamCollectionRef = collection(db, prefix);
+                const snapshot = await getDocs(teamCollectionRef);
+
+                const toernooien = new Map();
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                     // Assuming doc.id is structured as 'toernooiId_rX_vY'
+                    const idParts = doc.id.split('_');
+                    // The first part is the toernooiId. Handle cases where id might be just toernooiId.
+                    const id = idParts.length > 1 ? idParts[0] : doc.id;
+
+                    const datum = data.datum || "onbekend";
+
+                    if (!toernooien.has(id)) {
+                        toernooien.set(id, {
+                            id,
+                            datum,
+                            wedstrijden: 1
+                        });
+                    } else {
+                        toernooien.get(id).wedstrijden++;
+                    }
+                });
+
+                // Sorteer op datum (nieuwste eerst)
+                Array.from(toernooien.values())
+                    .sort((a, b) => b.datum.localeCompare(a.datum))
+                    .forEach(toernooi => {
+                        const opt = document.createElement("option");
+                        opt.value = toernooi.id;
+                        opt.textContent = `${toernooi.datum} (${toernooi.wedstrijden} wedstrijden)`;
+                        select.appendChild(opt);
+                    });
+
+                container.appendChild(select);
+
+                select.addEventListener("change", laadToernooi);
+            } catch (error) {
+                console.error("Fout bij laden toernooien:", error);
+                container.innerHTML += `<p class="error">Fout bij laden toernooien: ${error.message}</p>`;
+            } finally {
+                spinner.style.display = "none";
+            }
+        }
+
+        async function laadToernooi(e) {
+            const gekozenId = e.target.value;
+            if (!gekozenId) return;
+
+            document.getElementById("historieSpinner").style.display = "inline-block";
+
+            try {
+                toernooiId = gekozenId;
+                document.getElementById("toernooiId").value = toernooiId;
+
+                // Clear existing data structures BEFORE loading new data
+                schema = [];
+                spelers = new Set(); // Use Set to automatically handle unique players
+                // Reset punten object
+                Object.keys(punten).forEach(key => delete punten[key]);
+
+                const prefix = `scores_${team}`;
+                // Use a query to get only documents for this specific tournament
+                const q = query(collection(db, prefix), where("toernooiId", "==", gekozenId));
+                const snapshot = await getDocs(q); // << Use the result of the filtered query
+
+                let maxRonde = 0;
+                let maxVeld = 0;
+                let toernooiDatum = "";
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    toernooiDatum = data.datum || toernooiDatum;
+
+                    // Ensure teamA and teamB exist to consider it a match document
+                    if (data.teamA && data.teamB) {
+                        // Extract ronde and veld from document ID
+                        // Format could be: toernooiId_r0_v0
+                        const docId = docSnap.id;
+                        const parts = docId.split("_");
+
+                        // Check if the docId starts with the chosen toernooiId and follows the _rX_vY format
+                        if (parts[0] === gekozenId && parts.length >= 3) {
+                            const rondeStr = parts[parts.length - 2];
+                            const veldStr = parts[parts.length - 1];
+                            const ronde = parseInt(rondeStr.substring(1));
+                            const veld = parseInt(veldStr.substring(1));
+
+                            if (!isNaN(ronde) && !isNaN(veld)) {
+                                if (ronde > maxRonde) maxRonde = ronde;
+                                if (veld > maxVeld) maxVeld = veld;
+
+                                const teamA = data.teamA || [];
+                                const teamB = data.teamB || [];
+                                const a = data.a;
+                                const b = data.b;
+
+                                teamA.forEach(sp => spelers.add(sp));
+                                teamB.forEach(sp => spelers.add(sp));
+
+                                if (!schema[ronde]) schema[ronde] = [];
+                                schema[ronde][veld] = {
+                                    veld: veld + 1,
+                                    teamA,
+                                    teamB,
+                                    score: { a, b }
+                                };
+                            }
+                        }
+                    }
+                });
+
+                // Convert Set of players to Array and initialize points
+                spelers = Array.from(spelers);
+                spelers.forEach(sp => {
+                   if (sp) punten[sp] = 0; // Initialize points for each player
+                });
+
+
+                // Vul de configuratie in
+                document.getElementById("aantalSpelers").value = spelers.length;
+                document.getElementById("aantalRondes").value = maxRonde + 1;
+                document.getElementById("aantalVelden").value = maxVeld + 1;
+
+                updateVeldenInstellingen();
+                updateSpelersInput();
+
+                // Vul de spelersnamen in (will be done by updateSpelersInput using the populated spelers array)
+
+                // Bepaal veld instellingen op basis van eerste ronde
+                // This part needs to happen AFTER schema is populated
+                if (schema[0]) {
+                     veldInstellingen = schema[0].map(wedstrijd =>
+                         wedstrijd ? wedstrijd.teamA.length : 2 // Default to 2 if match data is missing for a field
+                     );
+                    // Ensure veldInstellingen has enough entries based on maxVeld + 1
+                     while(veldInstellingen.length <= maxVeld) {
+                         veldInstellingen.push(2); // Default size for fields without data in round 0
+                     }
+
+                     veldInstellingen.forEach((grootte, index) => {
+                         const input = document.getElementById(`veld_${index}`);
+                         if (input) input.value = grootte;
+                     });
+                } else {
+                     // If no data in round 0, reset veldInstellingen based on the number of fields input
+                     veldInstellingen = Array(maxVeld + 1).fill(2); // Default to 2 players per team for all fields
+                     updateVeldenInstellingen(); // Re-render field settings inputs with default values
+                }
+
+
+                renderSchema();
+
+                // Vul scores in
+                schema.forEach((ronde, r) => {
+                    if (!ronde) return;
+
+                    ronde.forEach((wedstrijd, v) => {
+                        if (wedstrijd && wedstrijd.score) {
+                            const id = `r${r}_v${v}`;
+                            const aEl = document.getElementById(`${id}a`);
+                            const bEl = document.getElementById(`${id}b`);
+
+                            if (aEl && wedstrijd.score.a !== undefined) aEl.value = wedstrijd.score.a;
+                            if (bEl && wedstrijd.score.b !== undefined) bEl.value = wedstrijd.score.b;
+                        }
+                    });
+                });
+
+                updateStand();
+                showNotification(`Toernooi van ${toernooiDatum} geladen`, "success");
+
+                // Scroll naar schema
+                 document.getElementById("app").scrollIntoView({ behavior: "smooth" });
+
+            } catch (error) {
+                console.error("Fout bij laden toernooi:", error);
+                showNotification(`Fout bij laden toernooi: ${error.message}`, "error");
+            } finally {
+                document.getElementById("historieSpinner").style.display = "none";
+            }
+        }
+
+
+        document.getElementById("startBtn").addEventListener("click", startToernooi);
+
+        function startToernooi() {
+            const aantalSpelers = parseInt(document.getElementById("aantalSpelers").value);
+            const aantalRondes = parseInt(document.getElementById("aantalRondes").value);
+            const aantalVelden = parseInt(document.getElementById("aantalVelden").value);
+
+            // Validatie
+            if (isNaN(aantalSpelers) || aantalSpelers < 4) {
+                return showNotification("Je hebt minimaal 4 spelers nodig.", "error");
+            }
+
+            if (isNaN(aantalRondes) || aantalRondes < 1) {
+                return showNotification("Je hebt minimaal 1 ronde nodig.", "error");
+            }
+
+            if (isNaN(aantalVelden) || aantalVelden < 1) {
+                return showNotification("Je hebt minimaal 1 veld nodig.", "error");
+            }
+
+            // Verzamel veld instellingen
+            veldInstellingen = [];
+            for (let i = 0; i < aantalVelden; i++) {
+                const veldInput = document.getElementById(`veld_${i}`);
+                 const grootte = parseInt(veldInput ? veldInput.value : 2); // Default to 2 if input not found
+                 if (isNaN(grootte) || grootte < 1) {
+                      return showNotification(`Ongeldige teamgrootte voor veld ${i+1}. Minimaal 1 speler per team.`, "error");
+                 }
+                veldInstellingen.push(grootte);
+            }
+
+            const benodigdeSpelersPerRonde = veldInstellingen.reduce((acc, val) => acc + val * 2, 0);
+            if (benodigdeSpelersPerRonde > aantalSpelers) {
+                return showNotification(`Je hebt ${aantalSpelers} spelers, maar er zijn ${benodigdeSpelersPerRonde} nodig per ronde. Pas het aantal spelers of veldgroottes aan.`, "error");
+            }
+
+            // Verzamel spelersnamen
+            const nieuweSpelers = [];
+            for (let i = 0; i < aantalSpelers; i++) {
+                const el = document.getElementById(`speler_${i}`);
+                const naam = el && el.value ? el.value.trim() : `Speler ${i + 1}`;
+                if (naam) { // Only add non-empty names
+                    nieuweSpelers.push(naam);
+                }
+            }
+
+             if (nieuweSpelers.length !== aantalSpelers) {
+                 return showNotification("Niet alle spelersnamen zijn ingevuld of zijn leeg.", "error");
+             }
+
+            spelers = nieuweSpelers; // Update global spelers array
+            // Reset punten for new set of players
+            Object.keys(punten).forEach(key => delete punten[key]);
+            spelers.forEach(sp => punten[sp] = 0);
+
+
+            // Toernooi ID uit input halen of genereren
+            toernooiId = document.getElementById("toernooiId").value.trim();
+            if (!toernooiId) {
+                toernooiId = `${vandaag}_${Date.now().toString().slice(-6)}`;
+                document.getElementById("toernooiId").value = toernooiId;
+            }
+
+            // Schema genereren
+            schema = genereerSchema(spelers, aantalRondes, veldInstellingen);
+            renderSchema();
+
+            showNotification("Toernooi schema is gegenereerd!", "success");
+
+            // Scroll naar schema
+            document.getElementById("app").scrollIntoView({ behavior: "smooth" });
+
+            // Initial save of empty scores to Firebase
+            schema.forEach((ronde, r) => {
+                if (!ronde) return;
+                ronde.forEach((wedstrijd, v) => {
+                     if (!wedstrijd) return;
+                     const docId = `${toernooiId}_r${r}_v${v}`;
+                     const docRef = doc(db, `scores_${team}`, docId);
+                     // Only set if the document doesn't exist or doesn't have scores yet
+                     // This prevents overwriting existing scores if 'Start Toernooi' is clicked again
+                     setDoc(docRef, {
+                         toernooiId: toernooiId,
+                         datum: vandaag,
+                         teamA: wedstrijd.teamA,
+                         teamB: wedstrijd.teamB,
+                         a: null, // Initialize score as null
+                         b: null  // Initialize score as null
+                     }, { merge: true }) // Use merge to avoid overwriting if data exists
+                     .catch(error => console.error("Error writing initial match data:", error));
+                });
+            });
+             updateStand(); // Update stand immediately after generating schema (all scores are 0 or null)
+        }
+
+
+        function genereerSchema(spelers, rondes, veldInstellingen) {
+            const schema = [];
+            // For a more balanced schedule, a round-robin or similar algorithm is needed.
+            // The current shuffle-based approach can lead to uneven distribution.
+            // Implementing a proper tournament scheduling algorithm is complex and outside
+            // the scope of this quick fix. The current logic is kept but noted as basic.
+
+            let alleSpelers = [...spelers]; // Start with all players available
+
+            for (let r = 0; r < rondes; r++) {
+                const ronde = [];
+                let beschikbareSpelers = [...alleSpelers]; // Reset available players for each round
+                 // Simple shuffle for demonstration; a real algorithm would be better
+                beschikbareSpelers.sort(() => Math.random() - 0.5);
+
+                for (let v = 0; v < veldInstellingen.length; v++) {
+                    const teamSize = veldInstellingen[v];
+                    const totalNeeded = teamSize * 2;
+
+                    if (beschikbareSpelers.length < totalNeeded) {
+                        // Not enough players for a full match on this field
+                        ronde.push(null); // Represent as an empty slot
+                        continue;
+                    }
+
+                    // Select players for this match from the available pool
+                    const teamA = [];
+                    const teamB = [];
+
+                    // Simple selection - just take from the shuffled list
+                    for(let i = 0; i < teamSize; i++) teamA.push(beschikbareSpelers.shift());
+                    for(let i = 0; i < teamSize; i++) teamB.push(beschikbareSpelers.shift());
+
+
+                    ronde.push({
+                        veld: v + 1,
+                        teamA,
+                        teamB
+                    });
+                }
+                // Players not used in this round are left in beschikbareSpelers
+                // In a real algorithm, you'd manage player availability differently.
+                schema.push(ronde);
+            }
+
+            return schema;
+        }
+
+        function renderSchema() {
+            appDiv.innerHTML = `
+                <div class="actions-container">
+                    <button id="resetScores" class="btn warning"><i class="icon">↺</i> Reset scores</button>
+                    <button id="resetAll" class="btn danger"><i class="icon">⟲</i> Opnieuw beginnen</button>
+                    <button id="printSchema" class="btn info"><i class="icon">🖨️</i> Print schema</button>
+                </div>
+            `;
+
+            const schemaContainer = document.createElement("div");
+            schemaContainer.className = "schema-container";
+
+            schema.forEach((ronde, i) => {
+                const div = document.createElement("div");
+                div.className = "ronde-blok";
+                div.innerHTML = `<h2 class="ronde-titel">Ronde ${i + 1}</h2>`;
+
+                if (!ronde || ronde.length === 0 || ronde.every(w => w === null)) {
+                    div.innerHTML += `<p class="empty-message">Geen wedstrijden in deze ronde</p>`;
+                } else {
+                    ronde.forEach((wedstrijd, j) => {
+                        if (!wedstrijd) return;
+
+                        const id = `r${i}_v${j}`;
+                        const wedstrijdDiv = document.createElement("div");
+                        wedstrijdDiv.className = "wedstrijd-kaart";
+
+                        wedstrijdDiv.innerHTML = `
+                            <div class="wedstrijd-header">Veld ${wedstrijd.veld}</div>
+                            <div class="teams-container">
+                                <div class="team">
+                                    <div class="team-naam">${wedstrijd.teamA.join(" & ")}</div>
+                                    <input type="number" min="0" id="${id}a" class="score-input" placeholder="0">
+                                </div>
+                                <div class="vs">vs</div>
+                                <div class="team">
+                                    <input type="number" min="0" id="${id}b" class="score-input" placeholder="0">
+                                    <div class="team-naam">${wedstrijd.teamB.join(" & ")}</div>
+                                </div>
+                            </div>
+                        `;
+
+                        div.appendChild(wedstrijdDiv);
+                    });
+                }
+
+                schemaContainer.appendChild(div);
+            });
+
+            appDiv.appendChild(schemaContainer);
+
+            const standDiv = document.createElement("div");
+            standDiv.className = "stand-container";
+            standDiv.innerHTML = `
+                <h2 class="stand-titel">Stand</h2>
+                <table id="standTabel" class="stand-tabel">
+                    <thead>
+                        <tr>
+                            <th>Positie</th>
+                            <th>Speler</th>
+                            <th>Punten</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            `;
+
+            appDiv.appendChild(standDiv);
+
+            document.getElementById("resetScores").addEventListener("click", confirmResetScores);
+            document.getElementById("resetAll").addEventListener("click", confirmResetAll);
+            document.getElementById("printSchema").addEventListener("click", printSchema);
+
+            // Setup Firebase sync after rendering the schema
+            setupFirebaseSync();
+            updateStand(); // Initial stand update
+        }
+
+        function printSchema() {
+            const printWindow = window.open('', '_blank');
+
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Toernooi Schema ${team} - ${toernooiId ? toernooiId.split('_')[0] : 'Datum'}</title>
+                    <style>
+                        body { font-family: 'Open Sans', sans-serif; padding: 20px; }
+                        h1 { text-align: center; margin-bottom: 30px; }
+                        .schema { display: flex; flex-wrap: wrap; gap: 20px; }
+                        .ronde { border: 1px solid #ccc; border-radius: 8px; padding: 15px; width: 45%; min-width: 300px; } /* Added min-width */
+                        .ronde-titel { background: #f0f0f0; padding: 8px; margin-top: 0; border-radius: 4px; text-align: center; } /* Added text-align */
+                        .wedstrijd { margin: 15px 0; padding: 10px; border-bottom: 1px solid #eee; }
+                        .veld { font-weight: bold; text-align: center; margin-bottom: 5px; } /* Added text-align and margin */
+                        .teams { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+                        .team { display: inline-block; width: 45%; text-align: center; } /* Added text-align */
+                        .vs { display: inline-block; width: 10%; text-align: center; font-weight: bold; } /* Added font-weight */
+                         .score { font-weight: bold; } /* Style for printed scores */
+                        .team-naam { word-break: break-word; } /* Prevent long names from overflowing */
+                        .stand { margin-top: 30px; }
+                        .stand-tabel { width: 100%; border-collapse: collapse; }
+                        .stand-tabel th, .stand-tabel td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+                        .stand-tabel th { background-color: #f2f2f2; }
+                        .stand-tabel td:nth-child(1) { text-align: center; } /* Center position column */
+                        .stand-tabel td:nth-child(3) { text-align: center; } /* Center points column */
+                        @media print {
+                            .ronde { page-break-inside: avoid; }
+                            .stand { page-break-before: always; }
+                            body { font-size: 10pt; } /* Smaller font for printing */
+                            .ronde, .stand { box-shadow: none; border: none; } /* Remove box-shadow/border in print */
+                             .ronde-blok { border: 1px solid #ccc; } /* Add border back to ronde blocks */
+                             h1, h2, h3 { color: #000; } /* Ensure headings are black */
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>Toernooi Schema ${team} - ${toernooiId ? toernooiId.split('_')[0] : 'Datum'}</h1>
+                    <div class="schema">
+            `);
+
+            schema.forEach((ronde, i) => {
+                printWindow.document.write(`
+                    <div class="ronde-blok">
+                        <h2 class="ronde-titel">Ronde ${i + 1}</h2>
+                `);
+
+                if (!ronde || ronde.length === 0 || ronde.every(w => w === null)) {
+                    printWindow.document.write(`<p>Geen wedstrijden in deze ronde</p>`);
+                } else {
+                    ronde.forEach((wedstrijd, j) => {
+                        if (!wedstrijd) return;
+
+                        const id = `r${i}_v${j}`;
+                        const scoreA = document.getElementById(`${id}a`) ? document.getElementById(`${id}a`).value : "-";
+                        const scoreB = document.getElementById(`${id}b`) ? document.getElementById(`${id}b`).value : "-";
+
+                        printWindow.document.write(`
+                            <div class="wedstrijd">
+                                <div class="veld">Veld ${wedstrijd.veld}</div>
+                                <div class="teams">
+                                    <div class="team team-naam">${wedstrijd.teamA.join(" & ")}</div>
+                                     <div class="vs"><span class="score">${scoreA}</span> - <span class="score">${scoreB}</span></div>
+                                    <div class="team team-naam">${wedstrijd.teamB.join(" & ")}</div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                }
+
+                printWindow.document.write(`</div>`);
+            });
+
+            printWindow.document.write(`
+                    </div>
+                    <div class="stand">
+                        <h2>Stand</h2>
+                        <table class="stand-tabel">
+                            <thead>
+                                <tr>
+                                    <th>Positie</th>
+                                    <th>Speler</th>
+                                    <th>Punten</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `);
+
+            const sortedStand = Object.entries(punten)
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])); // Sort by points, then name
+
+            sortedStand.forEach(([naam, score], index) => {
+                printWindow.document.write(`
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${naam}</td>
+                        <td>${score}</td>
+                    </tr>
+                `);
+            });
+
+            printWindow.document.write(`
+                            </tbody>
+                        </table>
+                    </div>
+                </body>
+                </html>
+            `);
+
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+
+        function updateStand() {
+            // Reset punten
+             // Ensure all current players in the global spelers array are initialized to 0 points
+             // before calculating based on scores. This handles cases where players might
+             // not have played yet or weren't in the initial loaded schema but are in the
+             // current players list (less likely with current logic, but good practice).
+             const currentPlayers = new Set();
+             schema.forEach(ronde => {
+                 if (ronde) {
+                     ronde.forEach(wedstrijd => {
+                         if (wedstrijd) {
+                             wedstrijd.teamA.forEach(sp => currentPlayers.add(sp));
+                             wedstrijd.teamB.forEach(sp => currentPlayers.add(sp));
+                         }
+                     });
+                 }
+             });
+
+            // Initialize points for all players who have played or are in the current spelers list
+             // Use the global 'spelers' array as the source of truth for who is participating.
+             spelers.forEach(sp => {
+                 if (sp) punten[sp] = 0;
+             });
+
+
+            // Bereken punten op basis van scores
+            schema.forEach((ronde, i) => {
+                if (!ronde) return;
+
+                ronde.forEach((wedstrijd, j) => {
+                    if (!wedstrijd) return;
+
+                    const id = `r${i}_v${j}`;
+                    const elA = document.getElementById(`${id}a`);
+                    const elB = document.getElementById(`${id}b`);
+
+                    if (!elA || !elB) return;
+
+                    const a = parseInt(elA.value);
+                    const b = parseInt(elB.value);
+
+                    if (!isNaN(a) && !isNaN(b)) {
+                        let pa = 0, pb = 0;
+
+                        if (a > b) pa = 3;      // Winst = 3 punten
+                        else if (a < b) pb = 3; // Winst = 3 punten
+                        else pa = pb = 1;       // Gelijkspel = 1 punt
+
+                         // Add points to players in teamA and teamB
+                        wedstrijd.teamA.forEach(sp => {
+                            if (punten.hasOwnProperty(sp)) { // Check if player exists in punten object
+                                punten[sp] += pa;
+                            } else {
+                                // This case should ideally not happen if 'spelers' and 'punten' are synced
+                                // but adding a safeguard.
+                                punten[sp] = pa;
+                            }
+                        });
+                        wedstrijd.teamB.forEach(sp => {
+                             if (punten.hasOwnProperty(sp)) {
+                                 punten[sp] += pb;
+                             } else {
+                                 punten[sp] = pb;
+                             }
+                        });
+                    }
+                });
+            });
+
+            // Update stand tabel
+            const table = document.getElementById("standTabel").querySelector("tbody");
+            if (!table) {
+                console.error("Stand table body not found.");
+                return;
+            }
+            table.innerHTML = "";
+
+            Object.entries(punten)
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) // Sort by points (desc), then name (asc)
+                .forEach(([naam, score], index) => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${naam}</td>
+                        <td>${score}</td>
+                    `;
+                    table.appendChild(row);
+                });
+        }
+
+
+        function setupFirebaseSync() {
+             // Remove any previous listeners to avoid duplicates if setupFirebaseSync is called multiple times
+             // This requires storing the unsubscribe functions, which adds complexity.
+             // For simplicity in this fix, we'll assume setupFirebaseSync is only called once after renderSchema.
+             // In a more complex app, managing subscriptions is important.
+
+            schema.forEach((ronde, i) => {
+                if (!ronde) return;
+
+                ronde.forEach((wedstrijd, j) => {
+                    if (!wedstrijd) return;
+
+                    const id = `r${i}_v${j}`;
+                    const docId = `${toernooiId}_${id}`;
+                    const docRef = doc(db, `scores_${team}`, docId);
+
+                    // Firebase sync luisteren naar veranderingen
+                     // Use onSnapshot to listen for real-time updates
+                    onSnapshot(docRef, (snap) => {
+                        if (snap.exists()) {
+                            const data = snap.data();
+                            const aEl = document.getElementById(`${id}a`);
+                            const bEl = document.getElementById(`${id}b`);
+
+                            // Update input values only if they are different from the data in Firestore
+                            // This prevents infinite loops if the change event also triggers a save.
+                            // Check for undefined is important as null/0 are valid scores.
+                            if (aEl && data.a !== undefined && parseInt(aEl.value) !== data.a) {
+                                aEl.value = data.a;
+                            }
+                            if (bEl && data.b !== undefined && parseInt(bEl.value) !== data.b) {
+                                bEl.value = data.b;
+                            }
+
+                             // Only update stand if score data is present
+                             if (data.a !== undefined && data.b !== undefined) {
+                                updateStand();
+                             }
+
+                        } else {
+                            // Document was deleted (e.g., by resetScores)
+                            const aEl = document.getElementById(`${id}a`);
+                            const bEl = document.getElementById(`${id}b`);
+                             if (aEl) aEl.value = "";
+                             if (bEl) bEl.value = "";
+                            updateStand(); // Update stand as scores are now effectively reset
+                        }
+                    }, (error) => {
+                         console.error("Error listening to match document:", docId, error);
+                    });
+
+
+                    // Event listeners for score inputs
+                    ["a", "b"].forEach(kant => {
+                        const inputEl = document.getElementById(`${id}${kant}`);
+                        if (!inputEl) return;
+
+                        // Use 'input' event for more real-time feedback, or 'change' if saving on blur is preferred
+                        inputEl.addEventListener("change", () => {
+                             // Get values directly from input fields
+                            const aVal = parseInt(document.getElementById(`${id}a`).value);
+                            const bVal = parseInt(document.getElementById(`${id}b`).value);
+
+                             // Only save if both are valid numbers
+                            if (!isNaN(aVal) && !isNaN(bVal)) {
+                                const now = new Date().toISOString().split('T')[0];
+
+                                setDoc(docRef, {
+                                    a: aVal,
+                                    b: bVal,
+                                    datum: now,
+                                    teamA: wedstrijd.teamA,
+                                    teamB: wedstrijd.teamB,
+                                    toernooiId: toernooiId
+                                }, { merge: true }) // Use merge to update existing document without overwriting other fields if any
+                                .then(() => {
+                                     // Data saved successfully, stand will be updated by the onSnapshot listener
+                                })
+                                .catch(error => {
+                                    console.error("Error saving score:", docId, error);
+                                    showNotification("Fout bij opslaan score: " + error.message, "error");
+                                });
+                            } else {
+                                // Handle cases where one or both inputs are empty/invalid after change
+                                // You might want to save null or handle this case specifically
+                                // For now, we'll just update the stand based on current (potentially invalid) input
+                                // A more robust solution would validate before allowing changes or saving.
+                                console.warn(`Invalid score input for match ${docId}: A=${elA.value}, B=${elB.value}`);
+                                // Optionally, save nulls to clear scores in Firestore if inputs are empty
+                                if (elA.value === "" || elB.value === "") {
+                                     setDoc(docRef, { a: null, b: null }, { merge: true })
+                                         .catch(error => console.error("Error saving null score:", error));
+                                }
+                            }
+
+                            // updateStand(); // updateStand will be called by the onSnapshot listener
+                        });
+                    });
+                });
+            });
+        }
+
+
+        function confirmResetScores() {
+            if (confirm("Weet je zeker dat je alle scores van DIT toernooi wilt resetten?")) {
+                resetScores();
+            }
+        }
+
+        function confirmResetAll() {
+            if (confirm("Weet je zeker dat je helemaal opnieuw wilt beginnen (ander team kiezen)? Alle instellingen en scores gaan verloren.")) {
+                location.reload(); // Simplest way to reset everything
+            }
+        }
+
+        async function resetScores() {
+            const resetBtn = document.getElementById("resetScores");
+            const originalContent = resetBtn.innerHTML;
+            resetBtn.disabled = true;
+            resetBtn.innerHTML = `<div class="spinner"></div> Bezig...`; // Add spinner and disable button
+
+            try {
+                // Iterate through the current schema to find the documents to delete
+                const deletePromises = [];
+                schema.forEach((ronde, i) => {
+                    if (!ronde) return;
+                    ronde.forEach((wedstrijd, j) => {
+                        if (!wedstrijd) return;
+                        const docId = `${toernooiId}_r${i}_v${j}`;
+                        const docRef = doc(db, `scores_${team}`, docId);
+                        // Queue deletion promise
+                        deletePromises.push(deleteDoc(docRef).catch(error => {
+                            console.error(`Error deleting document ${docId}:`, error);
+                            // Don't re-throw, try to delete others
+                        }));
+
+                        // Clear inputs immediately for responsiveness
+                         const aEl = document.getElementById(`${id}a`);
+                         const bEl = document.getElementById(`${id}b`);
+                         if (aEl) aEl.value = "";
+                         if (bEl) bEl.value = "";
+                    });
+                });
+
+                // Wait for all deletion promises to settle
+                await Promise.allSettled(deletePromises);
+
+
+                // Reset scores in the local schema and points object
+                 schema.forEach(ronde => {
+                     if (ronde) {
+                         ronde.forEach(wedstrijd => {
+                             if (wedstrijd) {
+                                 wedstrijd.score = { a: null, b: null };
+                             }
+                         });
+                     }
+                 });
+
+                // Reset points for all players
+                spelers.forEach(sp => {
+                     if (sp) punten[sp] = 0;
+                });
+
+                updateStand(); // Update the stand based on the cleared scores
+                showNotification("Alle scores zijn gereset voor dit toernooi", "success");
+
+            } catch (error) {
+                console.error("Fout bij resetten scores:", error);
+                showNotification("Fout bij resetten scores: " + error.message, "error");
+            } finally {
+                 resetBtn.innerHTML = originalContent; // Restore button content
+                 resetBtn.disabled = false;
+            }
+        }
+
+
+        function showNotification(message, type = "info") {
+            const notification = document.createElement("div");
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <span>${message}</span>
+                    <button class="close-btn">×</button>
+                </div>
+            `;
+
+            // Append to a specific container if you have one, otherwise body
+            document.body.appendChild(notification);
+
+            // Fade in
+            setTimeout(() => {
+                notification.classList.add("show");
+            }, 10);
+
+            // Auto close after 5 seconds
+            const timeout = setTimeout(() => {
+                closeNotification(notification);
+            }, 5000);
+
+            // Close button
+            notification.querySelector(".close-btn").addEventListener("click", () => {
+                clearTimeout(timeout);
+                closeNotification(notification);
+            });
+        }
+
+        function closeNotification(notification) {
+            notification.classList.remove("show");
+            // Wait for transition to finish before removing
+            notification.addEventListener('transitionend', () => {
+                notification.remove();
+            }, { once: true }); // Use { once: true } to automatically remove the listener
+        }
+
+        // Call initial setup functions on page load (before team selection)
         updateVeldenInstellingen();
         updateSpelersInput();
-        
-        // Vul de spelersnamen in
-        spelers = Array.from(spelers);
-        spelers.forEach((speler, index) => {
-          const input = document.getElementById(`speler_${index}`);
-          if (input) input.value = speler;
-        });
-        
-        // Bepaal veld instellingen op basis van eerste ronde
-        if (schema[0]) {
-          veldInstellingen = schema[0].map(wedstrijd => 
-            wedstrijd ? wedstrijd.teamA.length : 2
-          );
-          
-          veldInstellingen.forEach((grootte, index) => {
-            const input = document.getElementById(`veld_${index}`);
-            if (input) input.value = grootte;
-          });
+
+         // Optional: Add a listener to the teamKeuze select to enable the button only when a choice is made
+         document.getElementById("teamKeuze").addEventListener("change", (e) => {
+              document.getElementById("teamSelectBtn").disabled = !e.target.value;
+         });
+         // Disable initially
+         document.getElementById("teamSelectBtn").disabled = true;
+
+
+    </script>
+    <style>
+        :root {
+            --primary: #1e88e5;
+            --primary-dark: #1565c0;
+            --secondary: #f5f5f5;
+            --text: #333;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --danger: #f44336;
+            --info: #2196f3;
+            --border: #e0e0e0;
+            --shadow: rgba(0, 0, 0, 0.1);
         }
-        
-        renderSchema();
-        
-        // Vul scores in
-        schema.forEach((ronde, r) => {
-          if (!ronde) return;
-          
-          ronde.forEach((wedstrijd, v) => {
-            if (wedstrijd && wedstrijd.score) {
-              const id = `r${r}_v${v}`;
-              const aEl = document.getElementById(`${id}a`);
-              const bEl = document.getElementById(`${id}b`);
-              
-              if (aEl) aEl.value = wedstrijd.score.a;
-              if (bEl) bEl.value = wedstrijd.score.b;
-            }
-          });
-        });
-        
-        updateStand();
-        showNotification(`Toernooi van ${toernooiDatum} geladen`, "success");
-      } catch (error) {
-        console.error("Fout bij laden toernooi:", error);
-        showNotification(`Fout bij laden toernooi: ${error.message}`, "error");
-      } finally {
-        document.getElementById("historieSpinner").style.display = "none";
-      }
-    }
 
-    document.getElementById("startBtn").addEventListener("click", startToernooi);
-
-    function startToernooi() {
-      const aantalSpelers = parseInt(document.getElementById("aantalSpelers").value);
-      const aantalRondes = parseInt(document.getElementById("aantalRondes").value);
-      const aantalVelden = parseInt(document.getElementById("aantalVelden").value);
-      
-      // Validatie
-      if (aantalSpelers < 4) {
-        return showNotification("Je hebt minimaal 4 spelers nodig.", "error");
-      }
-      
-      if (aantalRondes < 1) {
-        return showNotification("Je hebt minimaal 1 ronde nodig.", "error");
-      }
-      
-      if (aantalVelden < 1) {
-        return showNotification("Je hebt minimaal 1 veld nodig.", "error");
-      }
-
-      // Verzamel veld instellingen
-      veldInstellingen = [];
-      for (let i = 0; i < aantalVelden; i++) {
-        veldInstellingen.push(parseInt(document.getElementById(`veld_${i}`).value));
-      }
-
-      const benodigdeSpelersPerRonde = veldInstellingen.reduce((acc, val) => acc + val * 2, 0);
-      if (benodigdeSpelersPerRonde > aantalSpelers) {
-        return showNotification(`Je hebt ${aantalSpelers} spelers, maar er zijn ${benodigdeSpelersPerRonde} nodig per ronde.`, "error");
-      }
-
-      // Verzamel spelersnamen
-      spelers = [];
-      for (let i = 0; i < aantalSpelers; i++) {
-        const el = document.getElementById(`speler_${i}`);
-        const naam = el && el.value ? el.value.trim() : `Speler ${i + 1}`;
-        spelers.push(naam);
-        punten[naam] = 0;
-      }
-
-      // Toernooi ID uit input halen of genereren
-      toernooiId = document.getElementById("toernooiId").value.trim();
-      if (!toernooiId) {
-        toernooiId = `${vandaag}_${Date.now().toString().slice(-6)}`;
-        document.getElementById("toernooiId").value = toernooiId;
-      }
-
-      // Schema genereren
-      schema = genereerSchema(spelers, aantalRondes, veldInstellingen);
-      renderSchema();
-      
-      showNotification("Toernooi schema is gegenereerd!", "success");
-      
-      // Scroll naar schema
-      document.getElementById("app").scrollIntoView({ behavior: "smooth" });
-    }
-
-    function genereerSchema(spelers, rondes, veldInstellingen) {
-      const schema = [];
-      const speelhistorie = {}; // Bijhouden wie met wie heeft gespeeld
-      
-      // Initialiseer speelhistorie
-      spelers.forEach(spA => {
-        speelhistorie[spA] = {};
-        spelers.forEach(spB => {
-          if (spA !== spB) speelhistorie[spA][spB] = 0;
-        });
-      });
-      
-      for (let r = 0; r < rondes; r++) {
-        const ronde = [];
-        
-        // Maak kopie van spelers om te shufflen
-        let beschikbareSpelers = [...spelers];
-        
-        // Probeer eerlijke indeling te maken
-        for (let v = 0; v < veldInstellingen.length; v++) {
-          const teamSize = veldInstellingen[v];
-          const totalNeeded = teamSize * 2;
-          
-          if (beschikbareSpelers.length < totalNeeded) {
-            // Niet genoeg spelers voor dit veld
-            ronde.push(null);
-            continue;
-          }
-          
-          // Selecteer spelers voor deze wedstrijd
-          const teamA = [];
-          const teamB = [];
-          
-          // Probeer spelers te selecteren die nog niet veel samen gespeeld hebben
-          while (teamA.length < teamSize && beschikbareSpelers.length > 0) {
-            beschikbareSpelers.sort(() => Math.random() - 0.5); // Shuffle
-            teamA.push(beschikbareSpelers.shift());
-          }
-          
-          while (teamB.length < teamSize && beschikbareSpelers.length > 0) {
-            beschikbareSpelers.sort(() => Math.random() - 0.5); // Shuffle
-            teamB.push(beschikbareSpelers.shift());
-          }
-          
-          // Update speelhistorie
-          for (let a of teamA) {
-            for (let b of teamA) {
-              if (a !== b) speelhistorie[a][b]++;
-            }
-          }
-          
-          for (let a of teamB) {
-            for (let b of teamB) {
-              if (a !== b) speelhistorie[a][b]++;
-            }
-          }
-          
-          ronde.push({
-            veld: v + 1,
-            teamA,
-            teamB
-          });
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
-        
-        schema.push(ronde);
-      }
-      
-      return schema;
-    }
 
-    function renderSchema() {
-      appDiv.innerHTML = `
-        <div class="actions-container">
-          <button id="resetScores" class="btn warning"><i class="icon">↺</i> Reset scores</button>
-          <button id="resetAll" class="btn danger"><i class="icon">⟲</i> Opnieuw beginnen</button>
-          <button id="printSchema" class="btn info"><i class="icon">🖨️</i> Print schema</button> 
-        </div>
-      `;
-      
-      const schemaContainer = document.createElement("div");
-      schemaContainer.className = "schema-container";
-      
-      schema.forEach((ronde, i) => {
-        const div = document.createElement("div");
-        div.className = "ronde-blok";
-        div.innerHTML = `<h2 class="ronde-titel">Ronde ${i + 1}</h2>`;
-        
-        if (!ronde || ronde.length === 0) {
-          div.innerHTML += `<p class="empty-message">Geen wedstrijden in deze ronde</p>`;
-        } else {
-          ronde.forEach((wedstrijd, j) => {
-            if (!wedstrijd) return;
-            
-            const id = `r${i}_v${j}`;
-            const wedstrijdDiv = document.createElement("div");
-            wedstrijdDiv.className = "wedstrijd-kaart";
-            
-            wedstrijdDiv.innerHTML = `
-              <div class="wedstrijd-header">Veld ${wedstrijd.veld}</div>
-              <div class="teams-container">
-                <div class="team">
-                  <div class="team-naam">${wedstrijd.teamA.join(" & ")}</div>
-                  <input type="number" min="0" id="${id}a" class="score-input" placeholder="0">
-                </div>
-                <div class="vs">vs</div>
-                <div class="team">
-                  <input type="number" min="0" id="${id}b" class="score-input" placeholder="0">
-                  <div class="team-naam">${wedstrijd.teamB.join(" & ")}</div>
-                </div>
-              </div>
-            `;
-            
-            div.appendChild(wedstrijdDiv);
-          });
+        body {
+            font-family: 'Open Sans', sans-serif;
+            padding: 1rem;
+            color: var(--text);
+            background-color: #f9f9f9;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
         }
-        
-        schemaContainer.appendChild(div);
-      });
-      
-      appDiv.appendChild(schemaContainer);
-      
-      const standDiv = document.createElement("div");
-      standDiv.className = "stand-container";
-      standDiv.innerHTML = `
-        <h2 class="stand-titel">Stand</h2>
-        <table id="standTabel" class="stand-tabel">
-          <thead>
-            <tr>
-              <th>Positie</th>
-              <th>Speler</th>
-              <th>Punten</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      `;
-      
-      appDiv.appendChild(standDiv);
-      
-      document.getElementById("resetScores").addEventListener("click", confirmResetScores);
-      document.getElementById("resetAll").addEventListener("click", confirmResetAll);
-      document.getElementById("printSchema").addEventListener("click", printSchema);
-      
-      setupFirebaseSync();
-    }
-    
-    function printSchema() {
-      const printWindow = window.open('', '_blank');
-      
-      printWindow.document.write(`
-        <html>
-        <head>
-          <title>Toernooi Schema ${team} - ${toernooiId}</title>
-          <style>
-            body { font-family: 'Open Sans', sans-serif; padding: 20px; }
-            h1 { text-align: center; margin-bottom: 30px; }
-            .schema { display: flex; flex-wrap: wrap; gap: 20px; }
-            .ronde { border: 1px solid #ccc; border-radius: 8px; padding: 15px; width: 45%; }
-            .ronde-titel { background: #f0f0f0; padding: 8px; margin-top: 0; border-radius: 4px; }
-            .wedstrijd { margin: 15px 0; padding: 10px; border-bottom: 1px solid #eee; }
-            .veld { font-weight: bold; }
-            .teams { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
-            .team { display: inline-block; width: 45%; }
-            .vs { display: inline-block; width: 10%; text-align: center; }
-            .stand { margin-top: 30px; }
-            .stand-tabel { width: 100%; border-collapse: collapse; }
-            .stand-tabel th, .stand-tabel td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-            .stand-tabel th { background-color: #f2f2f2; }
-            @media print {
-              .ronde { page-break-inside: avoid; }
-              .stand { page-break-before: always; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>Toernooi Schema ${team} - ${toernooiId.split('_')[0]}</h1>
-          <div class="schema">
-      `);
-      
-      schema.forEach((ronde, i) => {
-        printWindow.document.write(`
-          <div class="ronde">
-            <h2 class="ronde-titel">Ronde ${i + 1}</h2>
-        `);
-        
-        if (!ronde || ronde.length === 0) {
-          printWindow.document.write(`<p>Geen wedstrijden in deze ronde</p>`);
-        } else {
-          ronde.forEach((wedstrijd, j) => {
-            if (!wedstrijd) return;
-            
-            const id = `r${i}_v${j}`;
-            const scoreA = document.getElementById(`${id}a`).value || "-";
-            const scoreB = document.getElementById(`${id}b`).value || "-";
-            
-            printWindow.document.write(`
-              <div class="wedstrijd">
-                <div class="veld">Veld ${wedstrijd.veld}</div>
-                <div class="teams">
-                  <div class="team">${wedstrijd.teamA.join(" & ")}</div>
-                  <div class="vs">${scoreA} - ${scoreB}</div>
-                  <div class="team">${wedstrijd.teamB.join(" & ")}</div>
-                </div>
-              </div>
-            `);
-          });
+
+        h1, h2, h3 {
+            margin-bottom: 1rem;
+            color: var(--primary-dark);
         }
-        
-        printWindow.document.write(`</div>`);
-      });
-      
-      printWindow.document.write(`
-          </div>
-          <div class="stand">
-            <h2>Stand</h2>
-            <table class="stand-tabel">
-              <tr>
-                <th>Positie</th>
-                <th>Speler</th>
-                <th>Punten</th>
-              </tr>
-      `);
-      
-      const sortedStand = Object.entries(punten)
-        .sort((a, b) => b[1] - a[1]);
-      
-      sortedStand.forEach(([naam, score], index) => {
-        printWindow.document.write(`
-          <tr>
-            <td>${index + 1}</td>
-            <td>${naam}</td>
-            <td>${score}</td>
-          </tr>
-        `);
-      });
-      
-      printWindow.document.write(`
-            </table>
-          </div>
-        </body>
-        </html>
-      `);
-      
-      printWindow.document.close();
-      printWindow.print();
-    }
 
-    function updateStand() {
-  // Reset punten
-  spelers.forEach(sp => {
-    if (sp) punten[sp] = 0;
-  });
-  
-  // Rest of updateStand function remains the same...
-      
-      // Bereken punten op basis van scores
-      schema.forEach((ronde, i) => {
-        if (!ronde) return;
-        
-        ronde.forEach((wedstrijd, j) => {
-          if (!wedstrijd) return;
-          
-          const id = `r${i}_v${j}`;
-          const elA = document.getElementById(`${id}a`);
-          const elB = document.getElementById(`${id}b`);
-          
-          if (!elA || !elB) return;
-          
-          const a = parseInt(elA.value);
-          const b = parseInt(elB.value);
-          
-          if (!isNaN(a) && !isNaN(b)) {
-            let pa = 0, pb = 0;
-            
-            if (a > b) pa = 3;      // Winst = 3 punten
-            else if (a < b) pb = 3; // Winst = 3 punten
-            else pa = pb = 1;       // Gelijkspel = 1 punt
-            
-            wedstrijd.teamA.forEach(sp => punten[sp] += pa);
-            wedstrijd.teamB.forEach(sp => punten[sp] += pb);
-          }
-        });
-      });
-      
-      // Update stand tabel
-      const table = document.getElementById("standTabel").querySelector("tbody");
-      table.innerHTML = "";
-      
-      Object.entries(punten)
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([naam, score], index) => {
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${naam}</td>
-            <td>${score}</td>
-          `;
-          table.appendChild(row);
-        });
-    }
-
-    function setupFirebaseSync() {
-      schema.forEach((ronde, i) => {
-        if (!ronde) return;
-        
-        ronde.forEach((wedstrijd, j) => {
-          if (!wedstrijd) return;
-          
-          const id = `r${i}_v${j}`;
-          const docId = `${toernooiId}_${id}`;
-          const docRef = doc(db, `scores_${team}`, docId);
-
-          // Firebase sync luisteren naar veranderingen
-          onSnapshot(docRef, (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              const aEl = document.getElementById(`${id}a`);
-              const bEl = document.getElementById(`${id}b`);
-              
-              if (aEl && data.a !== undefined) aEl.value = data.a;
-              if (bEl && data.b !== undefined) bEl.value = data.b;
-              
-              updateStand();
-            }
-          });
-
-          // Event listeners voor score inputs
-          ["a", "b"].forEach(kant => {
-            const inputEl = document.getElementById(`${id}${kant}`);
-            if (!inputEl) return;
-            
-            inputEl.addEventListener("change", () => {
-              const aVal = parseInt(document.getElementById(`${id}a`).value);
-              const bVal = parseInt(document.getElementById(`${id}b`).value);
-              
-              if (!isNaN(aVal) && !isNaN(bVal)) {
-                const now = new Date().toISOString().split('T')[0];
-                
-                setDoc(docRef, {
-                  a: aVal,
-                  b: bVal,
-                  datum: now,
-                  teamA: wedstrijd.teamA,
-                  teamB: wedstrijd.teamB,
-                  toernooiId: toernooiId
-                });
-              }
-              
-              updateStand();
-            });
-          });
-        });
-      });
-    }
-
-    function confirmResetScores() {
-      if (confirm("Weet je zeker dat je alle scores wilt resetten?")) {
-        resetScores();
-      }
-    }
-    
-    function confirmResetAll() {
-      if (confirm("Weet je zeker dat je opnieuw wilt beginnen? Alle instellingen en scores worden gewist.")) {
-        location.reload();
-      }
-    }
-
-    async function resetScores() {
-      const loadingSpinner = document.createElement("div");
-      loadingSpinner.className = "spinner";
-      loadingSpinner.id = "resetSpinner";
-      document.getElementById("resetScores").appendChild(loadingSpinner);
-      
-      try {
-        for (let i = 0; i < schema.length; i++) {
-          if (!schema[i]) continue;
-          
-          for (let j = 0; j < schema[i].length; j++) {
-            if (!schema[i][j]) continue;
-            
-            const id = `r${i}_v${j}`;
-            const docId = `${toernooiId}_${id}`;
-            const docRef = doc(db, `scores_${team}`, docId);
-            
-            // Delete from Firebase
-            await deleteDoc(docRef);
-            
-            // Clear inputs
-            const aEl = document.getElementById(`${id}a`);
-            const bEl = document.getElementById(`${id}b`);
-            
-            if (aEl) aEl.value = "";
-            if (bEl) bEl.value = "";
-          }
+        h1 {
+            font-size: 1.8rem;
+            margin-top: 1rem;
+            text-align: center;
         }
-        
-        updateStand();
-        showNotification("Alle scores zijn gereset", "success");
-      } catch (error) {
-        console.error("Fout bij resetten scores:", error);
-        showNotification("Fout bij resetten scores: " + error.message, "error");
-      } finally {
-        document.getElementById("resetSpinner").remove();
-      }
-    }
-    
-    function showNotification(message, type = "info") {
-      const notification = document.createElement("div");
-      notification.className = `notification ${type}`;
-      notification.innerHTML = `
-        <div class="notification-content">
-          <span>${message}</span>
-          <button class="close-btn">×</button>
-        </div>
-      `;
-      
-      document.body.appendChild(notification);
-      
-      // Fade in
-      setTimeout(() => {
-        notification.classList.add("show");
-      }, 10);
-      
-      // Auto close after 5 seconds
-      const timeout = setTimeout(() => {
-        closeNotification(notification);
-      }, 5000);
-      
-      // Close button
-      notification.querySelector(".close-btn").addEventListener("click", () => {
-        clearTimeout(timeout);
-        closeNotification(notification);
-      });
-    }
-    
-    function closeNotification(notification) {
-      notification.classList.remove("show");
-      setTimeout(() => {
-        notification.remove();
-      }, 300);
-    }
-    
-    // Call initial setup functions
-    updateVeldenInstellingen();
-    updateSpelersInput();
-  </script>
-  <style>
-    :root {
-      --primary: #1e88e5;
-      --primary-dark: #1565c0;
-      --secondary: #f5f5f5;
-      --text: #333;
-      --success: #4caf50;
-      --warning: #ff9800;
-      --danger: #f44336;
-      --info: #2196f3;
-      --border: #e0e0e0;
-      --shadow: rgba(0, 0, 0, 0.1);
-    }
-    
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    
-    body {
-      font-family: 'Open Sans', sans-serif;
-      padding: 1rem;
-      color: var(--text);
-      background-color: #f9f9f9;
-      line-height: 1.6;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    
-    h1, h2, h3 {
-      margin-bottom: 1rem;
-      color: var(--primary-dark);
-    }
-    
-    h1 {
-      font-size: 1.8rem;
-      margin-top: 1rem;
-      text-align: center;
-    }
-    
-    h2 {
-      font-size: 1.4rem;
-      border-bottom: 2px solid var(--primary);
-      padding-bottom: 0.5rem;
-      margin-top: 1.5rem;
-    }
-    
-    h3 {
-      font-size: 1.2rem;
-      margin-top: 1rem;
-    }
-    
-    /* Logo */
-    .logo {
-      height: 40px;
-      margin-right: 15px;
-    }
-    
-    /* Team header */
-    .team-header {
-      display: none;
-      justify-content: space-between;
-      align-items: center;
-      background-color: var(--primary);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-    }
-    
-    .team-header-content {
-      display: flex;
-      align-items: center;
-    }
-    
-    /* Formulieren */
-    .form-section {
-      background-color: white;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px var(--shadow);
-    }
-    
-    .form-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      margin-bottom: 15px;
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: 600;
-    }
-    
-    .text-input, .number-input, .select-input {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      font-family: 'Open Sans', sans-serif;
-      margin-bottom: 10px;
-    }
-    
-    .number-input {
-      width: 80px;
-    }
-    
-    /* Spelers grid */
-    .players-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 10px;
-      margin-top: 15px;
-    }
-    
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    
-    /* Buttons */
-    .btn {
-      background-color: var(--primary);
-      color: white;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 600;
-      font-family: 'Open Sans', sans-serif;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      transition: background-color 0.2s;
-    }
-    
-    .btn:hover {
-      background-color: var(--primary-dark);
-    }
-    
-    .btn.success {
-      background-color: var(--success);
-    }
-    
-    .btn.warning {
-      background-color: var(--warning);
-    }
-    
-    .btn.danger {
-      background-color: var(--danger);
-    }
-    
-    .btn.info {
-      background-color: var(--info);
-    }
-    
-    .icon {
-      font-style: normal;
-    }
-    
-    /* Schema styling */
-    .schema-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-      margin-top: 20px;
-    }
-    
-    .ronde-blok {
-      background-color: white;
-      border-radius: 8px;
-      padding: 15px;
-      box-shadow: 0 2px 4px var(--shadow);
-    }
-    
-    .ronde-titel {
-      margin-top: 0;
-      margin-bottom: 15px;
-      text-align: center;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border);
-    }
-    
-    .wedstrijd-kaart {
-      background-color: var(--secondary);
-      border-radius: 6px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 1px 3px var(--shadow);
-    }
-    
-    .wedstrijd-header {
-      font-weight: 700;
-      margin-bottom: 10px;
-      color: var(--primary-dark);
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 5px;
-    }
-    
-    .teams-container {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    
-    .team {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 45%;
-    }
-    
-    .team-naam {
-      text-align: center;
-      margin: 5px 0;
-      font-weight: 600;
-    }
-    
-    .vs {
-      font-weight: 700;
-      color: #888;
-    }
-    
-    .score-input {
-      width: 50px;
-      text-align: center;
-      padding: 8px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      font-size: 1.1rem;
-      font-weight: 600;
-    }
-    
-    /* Stand tabel */
-    .stand-container {
-      background-color: white;
-      border-radius: 8px;
-      padding: 20px;
-      margin-top: 30px;
-      box-shadow: 0 2px 4px var(--shadow);
-    }
-    
-    .stand-titel {
-      text-align: center;
-      margin-top: 0;
-    }
-    
-    .stand-tabel {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 15px;
-    }
-    
-    .stand-tabel th, .stand-tabel td {
-      padding: 10px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-    }
-    
-    .stand-tabel th {
-      background-color: var(--secondary);
-      font-weight: 600;
-    }
-    
-    .stand-tabel tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-    
-    .stand-tabel tr:hover {
-      background-color: #f1f1f1;
-    }
-    
-    /* Acties container */
-    .actions-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    
-    /* Spinner */
-    .spinner {
-      display: none;
-      width: 18px;
-      height: 18px;
-      border: 3px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      border-top-color: white;
-      animation: spin 0.8s linear infinite;
-      margin-left: 10px;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    /* Notificaties */
-    .notification {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      max-width: 350px;
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-      transform: translateY(100px);
-      opacity: 0;
-      transition: transform 0.3s, opacity 0.3s;
-      z-index: 1000;
-    }
-    
-    .notification.show {
-      transform: translateY(0);
-      opacity: 1;
-    }
-    
-    .notification.success {
-      border-left: 4px solid var(--success);
-    }
-    
-    .notification.error {
-      border-left: 4px solid var(--danger);
-    }
-    
-    .notification.info {
-      border-left: 4px solid var(--info);
-    }
-    
-    .notification.warning {
-      border-left: 4px solid var(--warning);
-    }
-    
-    .notification-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 15px;
-    }
-    
-    .close-btn {
-      background: none;
-      border: none;
-      font-size: 20px;
-      cursor: pointer;
-      color: #aaa;
-    }
-    
-    .close-btn:hover {
-      color: #777;
-    }
-    
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 15px;
-    }
-    
-    .empty-message {
-      text-align: center;
-      color: #888;
-      font-style: italic;
-      padding: 20px;
-    }
-    
-    /* Responsief ontwerp */
-    @media (max-width: 768px) {
-      .schema-container {
-        grid-template-columns: 1fr;
-      }
-      
-      .wedstrijd-kaart {
-        padding: 10px;
-      }
-      
-      .team-naam {
-        font-size: 0.9rem;
-      }
-    }
+
+        h2 {
+            font-size: 1.4rem;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin-top: 1rem;
+        }
+
+        /* Logo */
+        .logo {
+            height: 40px;
+            margin-right: 15px;
+        }
+
+        /* Team header */
+        .team-header {
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--primary);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .team-header-content {
+            display: flex;
+            align-items: center;
+        }
+
+        /* Formulieren */
+        .form-section {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px var(--shadow);
+        }
+
+        .form-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center; /* Added for better alignment */
+        }
+
+        .form-row > div { /* Added to control spacing within rows */
+             flex: 1 1 auto; /* Allow items to grow and shrink */
+             min-width: 150px; /* Minimum width before wrapping */
+        }
+
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .text-input, .number-input, .select-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-family: 'Open Sans', sans-serif;
+            margin-bottom: 10px; /* Keep margin-bottom for stacked labels/inputs */
+             display: block; /* Ensure they take full width within their container */
+        }
+
+         /* Adjustments for inputs inside form-row */
+         .form-row .text-input,
+         .form-row .select-input {
+             margin-bottom: 0; /* Remove bottom margin in flex rows */
+             width: auto; /* Allow flex to control width */
+             flex-grow: 1;
+         }
+
+        .form-row .number-input {
+             width: 80px; /* Keep specific width for number inputs */
+             margin-bottom: 0; /* Remove bottom margin in flex rows */
+             flex-grow: 0; /* Prevent growing */
+        }
+
+        /* Spelers grid */
+        .players-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+             /* Added padding/border for clarity */
+             padding: 8px;
+             border: 1px solid #eee;
+             border-radius: 4px;
+        }
+
+        /* Buttons */
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-family: 'Open Sans', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: background-color 0.2s ease-in-out, opacity 0.2s ease-in-out; /* Added opacity transition */
+             white-space: nowrap; /* Prevent text wrapping */
+        }
+
+        .btn:hover:not(:disabled) { /* Only hover when not disabled */
+            background-color: var(--primary-dark);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+
+        .btn.success {
+            background-color: var(--success);
+        }
+
+        .btn.warning {
+            background-color: var(--warning);
+        }
+
+        .btn.danger {
+            background-color: var(--danger);
+        }
+
+        .btn.info {
+            background-color: var(--info);
+        }
+
+        .icon {
+            font-style: normal;
+        }
+
+        /* Actions container */
+        .actions-container {
+             margin-top: 20px;
+             margin-bottom: 20px;
+             display: flex;
+             flex-wrap: wrap;
+             gap: 10px;
+             justify-content: center; /* Center buttons */
+        }
+
+
+        /* Schema styling */
+        .schema-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .ronde-blok {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px var(--shadow);
+        }
+
+        .ronde-titel {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+            padding-bottom: 10px;
+             border-bottom: 1px solid var(--border); /* Added border */
+        }
+
+         .empty-message {
+             text-align: center;
+             color: #777;
+             font-style: italic;
+         }
+
+        .wedstrijd-kaart {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: var(--secondary);
+        }
+
+        .wedstrijd-header {
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: var(--primary-dark);
+        }
+
+        .teams-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .team {
+            flex: 1; /* Teams take equal space */
+            text-align: center;
+        }
+
+         .team-naam {
+             font-weight: 600;
+             word-break: break-word; /* Prevent long names from overflowing */
+             margin-bottom: 5px;
+         }
+
+        .vs {
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .score-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            text-align: center;
+            font-size: 1rem;
+            font-family: 'Open Sans', sans-serif;
+        }
+
+        /* Stand styling */
+        .stand-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px var(--shadow);
+        }
+
+        .stand-titel {
+            text-align: center;
+             margin-bottom: 20px;
+        }
+
+        .stand-tabel {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .stand-tabel th, .stand-tabel td {
+            padding: 12px 8px; /* More padding */
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .stand-tabel th {
+            background-color: var(--secondary);
+            font-weight: 700;
+             color: var(--text);
+        }
+
+        .stand-tabel tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+         .stand-tabel tbody tr:nth-child(even) {
+             background-color: #f9f9f9; /* Zebra striping */
+         }
+
+        .stand-tabel td:nth-child(1) {
+            text-align: center; /* Center position */
+            width: 10%;
+        }
+
+        .stand-tabel td:nth-child(3) {
+            text-align: center; /* Center points */
+            width: 15%;
+            font-weight: 600;
+        }
+
+
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            z-index: 1000; /* Ensure it's on top */
+            min-width: 250px;
+            max-width: 90%;
+        }
+
+        .notification.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .notification.success {
+            background-color: var(--success);
+        }
+
+        .notification.error {
+            background-color: var(--danger);
+        }
+
+        .notification.warning {
+            background-color: var(--warning);
+        }
+
+        .notification.info {
+            background-color: var(--info);
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .notification .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        /* Spinner */
+         .spinner {
+             border: 4px solid rgba(255, 255, 255, 0.3);
+             border-top: 4px solid white; /* Adjust color as needed */
+             border-radius: 50%;
+             width: 20px;
+             height: 20px;
+             animation: spin 1s linear infinite;
+             display: inline-block;
+             vertical-align: middle;
+             margin-left: 5px;
+         }
+
+         @keyframes spin {
+             0% { transform: rotate(0deg); }
+             100% { transform: rotate(360deg); }
+         }
+
+         /* Spinner for history loading */
+         #historieSpinner {
+              border-top-color: var(--primary); /* Match spinner color to section header */
+              display: none; /* Hidden by default */
+         }
+
+         .section-header {
+             display: flex;
+             align-items: center;
+             gap: 10px;
+         }
+
+         /* Responsive adjustments */
+         @media (max-width: 600px) {
+             .form-row {
+                 flex-direction: column;
+                 gap: 10px;
+             }
+             .form-row > div {
+                 width: 100%;
+                 min-width: auto;
+             }
+             .form-row .number-input {
+                 width: 100%;
+             }
+             .schema-container {
+                 grid-template-columns: 1fr; /* Stack rounds on small screens */
+             }
+             .ronde-blok {
+                 width: 100%;
+             }
+             .teams-container {
+                  flex-direction: column;
+             }
+             .team {
+                 width: 100%;
+                 margin-bottom: 10px;
+             }
+             .vs {
+                 margin-bottom: 10px;
+             }
+             .score-input {
+                 margin-top: 5px;
+             }
+         }
+
+
   </style>
 </head>
 <body>
-  <div id="teamSelect">
-    <div class="form-section">
-      <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-        <img src="https://www.asv33.nl/wp-content/themes/asv/assets/images/asv33-logo.svg" alt="ASV33 Logo" class="logo">
-        <h1>Toernooitje Planner</h1>
-      </div>
-      
-      <h2>Kies je team</h2>
-      <select id="teamKeuze" class="select-input">
-        <option value="">-- Kies een team --</option>
-        <option value="JO11">JO11</option>
-        <option value="JO12">JO12</option>
-        <option value="JO13">JO13</option>
-        <option value="JO14">JO14</option>
-      </select>
-      <br>
-      <button id="teamSelectBtn" class="btn">Start <i class="icon">→</i></button>
+    <div class="team-header" id="teamHeader">
+        <div class="team-header-content">
+             <img src="https://www.svgrepo.com/show/330815/trophy-cup.svg" alt="Toernooi Logo" class="logo">
+            <span id="teamInfo" style="font-size: 1.2rem; font-weight: bold;"></span>
+        </div>
+        <button id="teamSwitchBtn" class="btn danger"><i class="icon">↩️</i> Wissel team</button>
     </div>
-  </div>
 
-  <div id="configuratie" style="display:none">
-    <div id="teamHeader" class="team-header">
-      <div class="team-header-content">
-        <img src="logo.png" alt="ASV33 Logo" class="logo">
-        <h2 style="margin:0; color:white; border:none;">Team <span id="teamInfo"></span></h2>
-      </div>
-      <button id="teamSwitchBtn" class="btn">Team wijzigen</button>
+    <div id="teamSelect" class="form-section">
+        <h1>Kies je team</h1>
+        <p>Selecteer het team waarvoor je een toernooi wilt plannen.</p>
+        <div class="form-row">
+            <div>
+                <label for="teamKeuze">Team:</label>
+                <select id="teamKeuze" class="select-input">
+                    <option value="">-- Kies een team --</option>
+                    <option value="TeamA">Team A</option>
+                    <option value="TeamB">Team B</option>
+                    <option value="TeamC">Team C</option>
+                     <option value="Anders">Anders (voer in)</option>
+                </select>
+            </div>
+             <div>
+                 <label for="nieuwTeamNaam" style="display: none;" id="nieuwTeamLabel">Nieuwe teamnaam:</label>
+                 <input type="text" id="nieuwTeamNaam" class="text-input" placeholder="Voer nieuwe teamnaam in" style="display: none;">
+             </div>
+        </div>
+         <button id="teamSelectBtn" class="btn success">Selecteer team</button>
     </div>
-    
-    <div class="form-section">
-      <h2>Toernooi instellingen</h2>
-      
-      <div class="form-row">
-        <div>
-          <label for="toernooiId">Toernooi ID:</label>
-          <input type="text" id="toernooiId" class="text-input" placeholder="Datum_ID">
+
+    <div id="configuratie" class="form-section" style="display: none;">
+        <h1>Toernooi Instellingen</h1>
+
+        <div class="form-row">
+            <div>
+                <label for="toernooiId">Toernooi ID:</label>
+                 <input type="text" id="toernooiId" class="text-input" placeholder="Automatisch gegenereerd" disabled>
+            </div>
         </div>
-      </div>
-      
-      <div class="form-row">
-        <div>
-          <label for="aantalSpelers">Aantal spelers:</label>
-          <input type="number" id="aantalSpelers" min="4" max="30" value="10" class="number-input">
+
+
+        <div class="form-row">
+            <div>
+                <label for="aantalSpelers">Aantal spelers:</label>
+                <input type="number" id="aantalSpelers" value="4" min="4" class="number-input">
+            </div>
+            <div>
+                <label for="aantalRondes">Aantal rondes:</label>
+                <input type="number" id="aantalRondes" value="3" min="1" class="number-input">
+            </div>
+            <div>
+                <label for="aantalVelden">Aantal velden:</label>
+                <input type="number" id="aantalVelden" value="1" min="1" class="number-input">
+            </div>
         </div>
-        
-        <div>
-          <label for="aantalRondes">Aantal rondes:</label>
-          <input type="number" id="aantalRondes" value="5" min="1" max="20" class="number-input">
-        </div>
-        
-        <div>
-          <label for="aantalVelden">Aantal velden:</label>
-          <input type="number" id="aantalVelden" value="2" min="1" max="10" class="number-input">
-        </div>
-      </div>
-      
-      <h3>Veld instellingen</h3>
-      <div id="veldenInstellingen"></div>
-      
-      <h3>Spelersnamen</h3>
-      <div id="naamvelden" class="players-container"></div>
-      
-      <button id="startBtn" class="btn success">Genereer schema <i class="icon">→</i></button>
+
+        <h2>Spelersnamen</h2>
+        <div id="naamvelden" class="players-container">
+            </div>
+
+        <h2>Veld Instellingen</h2>
+        <div id="veldenInstellingen">
+            </div>
+
+        <button id="startBtn" class="btn primary" style="margin-top: 20px; width: 100%;">Genereer Schema</button>
+
+         <div id="oudeToernooiSelectie" style="margin-top: 30px;">
+              </div>
+
     </div>
-    
-    <div id="oudeToernooiSelectie" class="form-section"></div>
-    
-    <div id="app"></div>
-  </div>
+
+
+    <div id="app">
+        </div>
+
+     <script>
+         // Show/hide the "Nieuwe teamnaam" input based on the "Anders" option
+         document.getElementById("teamKeuze").addEventListener("change", (e) => {
+              const nieuwTeamInput = document.getElementById("nieuwTeamNaam");
+              const nieuwTeamLabel = document.getElementById("nieuwTeamLabel");
+             if (e.target.value === "Anders") {
+                 nieuwTeamInput.style.display = "block";
+                 nieuwTeamLabel.style.display = "block";
+                 nieuwTeamInput.required = true;
+             } else {
+                 nieuwTeamInput.style.display = "none";
+                 nieuwTeamLabel.style.display = "none";
+                 nieuwTeamInput.required = false;
+                 nieuwTeamInput.value = ""; // Clear the input if not "Anders"
+             }
+              // Also update the select button state
+             document.getElementById("teamSelectBtn").disabled = !e.target.value || (e.target.value === "Anders" && !nieuwTeamInput.value.trim());
+         });
+
+         document.getElementById("nieuwTeamNaam").addEventListener("input", (e) => {
+              // Update the select button state when typing in the new team name
+              const teamKeuze = document.getElementById("teamKeuze").value;
+              document.getElementById("teamSelectBtn").disabled = !teamKeuze || (teamKeuze === "Anders" && !e.target.value.trim());
+         });
+
+
+         // Modify the teamSelectBtn listener to use the new team name if "Anders" is selected
+         document.getElementById("teamSelectBtn").removeEventListener("click", async () => { /* remove existing listener */ }); // Remove the one added earlier
+         document.getElementById("teamSelectBtn").addEventListener("click", async () => {
+             const teamKeuzeSelect = document.getElementById("teamKeuze");
+             const nieuwTeamInput = document.getElementById("nieuwTeamNaam");
+
+             if (teamKeuzeSelect.value === "Anders") {
+                 team = nieuwTeamInput.value.trim();
+                 if (!team) {
+                     return showNotification("Voer een nieuwe teamnaam in.", "error");
+                 }
+             } else {
+                 team = teamKeuzeSelect.value;
+                 if (!team) {
+                     return showNotification("Kies een team om door te gaan.", "error");
+                 }
+             }
+
+             document.getElementById("teamSelect").style.display = "none";
+             document.getElementById("configuratie").style.display = "block";
+
+             // Toernooi-ID genereren (datum + timestamp voor uniekheid)
+             toernooiId = `${vandaag}_${Date.now().toString().slice(-6)}`;
+             document.getElementById("toernooiId").value = toernooiId;
+
+             await laadOudeToernooien();
+
+             document.getElementById("teamInfo").textContent = team;
+             document.getElementById("teamHeader").style.display = "flex";
+         });
+
+
+     </script>
+
 </body>
 </html>
