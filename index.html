@@ -121,22 +121,21 @@
         const snapshot = await getDocs(collectionGroup(db, prefix));
         const toernooien = new Map();
         
-        snapshot.forEach(doc => {
-          const id = doc.id.split("_")[0];
-          const data = doc.data();
-          const datum = data.datum || "onbekend";
-          
-          if (!toernooien.has(id)) {
-            toernooien.set(id, {
-              id,
-              datum,
-              wedstrijden: 1
-            });
-          } else {
-            toernooien.get(id).wedstrijden++;
-          }
-        });
-        
+snapshot.forEach(doc => {
+  const data = doc.data();
+  const id = data.toernooiId || doc.id.split("_")[0]; // Fallback for older data
+  const datum = data.datum || "onbekend";
+  
+  if (!toernooien.has(id)) {
+    toernooien.set(id, {
+      id,
+      datum,
+      wedstrijden: 1
+    });
+  } else {
+    toernooien.get(id).wedstrijden++;
+  }
+});
         // Sorteer op datum (nieuwste eerst)
         Array.from(toernooien.values())
           .sort((a, b) => b.datum.localeCompare(a.datum))
@@ -170,14 +169,64 @@
         
         schema = [];
         spelers = new Set();
+        
         const prefix = `scores_${team}`;
+        // Use a different query to make sure we only get documents for this specific tournament
+        const q = query(collection(db, prefix), where("toernooiId", "==", gekozenId));
+        const snapshot = await getDocs(q);
+          
+        // Clear existing data structures
+        schema = [];
+        spelers = new Set();
+        // Reset punten object
+        Object.keys(punten).forEach(key => delete punten[key]);
         const snapshot = await getDocs(collection(db, prefix));
         
         let maxRonde = 0;
         let maxVeld = 0;
         let toernooiDatum = "";
 
-        snapshot.forEach(docSnap => {
+       snapshot.forEach(docSnap => {
+  const data = docSnap.data();
+  toernooiDatum = data.datum || toernooiDatum;
+  
+  if (data.teamA && data.teamB) {
+    // Extract ronde and veld from document ID
+    // Format could be: toernooiId_r0_v0
+    const docId = docSnap.id;
+    const parts = docId.split("_");
+    if (parts.length >= 3) {
+      const rondeStr = parts[parts.length-2];
+      const veldStr = parts[parts.length-1];
+      const ronde = parseInt(rondeStr.substring(1));
+      const veld = parseInt(veldStr.substring(1));
+      
+      if (!isNaN(ronde) && !isNaN(veld)) {
+        if (ronde > maxRonde) maxRonde = ronde;
+        if (veld > maxVeld) maxVeld = veld;
+        
+        const teamA = data.teamA || [];
+        const teamB = data.teamB || [];
+        const a = data.a;
+        const b = data.b;
+        
+        teamA.forEach(sp => spelers.add(sp));
+        teamB.forEach(sp => spelers.add(sp));
+        
+        if (!schema[ronde]) schema[ronde] = [];
+        schema[ronde][veld] = { 
+          veld: veld + 1, 
+          teamA, 
+          teamB, 
+          score: { a, b } 
+        };
+      }
+    }
+  }
+});
+
+// Make sure to update the standings at the end of loading
+updateStand();
           const id = docSnap.id;
           if (id.startsWith(gekozenId + "_r")) {
             const data = docSnap.data();
@@ -569,8 +618,12 @@
     }
 
     function updateStand() {
-      // Reset punten
-      spelers.forEach(sp => punten[sp] = 0);
+  // Reset punten
+  spelers.forEach(sp => {
+    if (sp) punten[sp] = 0;
+  });
+  
+  // Rest of updateStand function remains the same...
       
       // Bereken punten op basis van scores
       schema.forEach((ronde, i) => {
@@ -660,7 +713,8 @@
                   b: bVal,
                   datum: now,
                   teamA: wedstrijd.teamA,
-                  teamB: wedstrijd.teamB
+                  teamB: wedstrijd.teamB,
+                  toernooiId: toernooiId
                 });
               }
               
